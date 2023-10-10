@@ -31,22 +31,22 @@
   "scripts": {
     "build": "yarn run build:lib && yarn run build:nbextension && yarn run build:labextension:dev",
     "build:prod": "yarn run build:lib && yarn run build:nbextension && yarn run build:labextension",
-    "build:labextension": "jupyter labextension build Shaders-For-Scientific-Visualisation",
-    "build:labextension:dev": "jupyter labextension build --development True Shaders-For-Scientific-Visualisation",
+    "build:labextension": "jupyter labextension build",
+    "build:labextension:dev": "jupyter labextension build --development True",
     "build:lib": "tsc",
     "build:nbextension": "webpack",
     "clean": "yarn run clean:lib && yarn run clean:nbextension && yarn run clean:labextension",
     "clean:lib": "rimraf lib",
     "clean:labextension": "rimraf pySSV/labextension",
     "clean:nbextension": "rimraf pySSV/nbextension/static/index.js",
-    "lint": "eslint Shaders-For-Scientific-Visualisation --ext .ts,.tsx --fix",
-    "lint:check": "eslint Shaders-For-Scientific-Visualisation --ext .ts,.tsx",
+    "lint": "eslint --ext .ts,.tsx --fix",
+    "lint:check": "eslint --ext .ts,.tsx",
     "prepack": "yarn run build:lib",
     "test": "jest",
     "watch": "npm-run-all -p watch:*",
     "watch:lib": "tsc -w",
     "watch:nbextension": "webpack --watch --mode=development",
-    "watch:labextension": "jupyter labextension watch Shaders-For-Scientific-Visualisation"
+    "watch:labextension": "jupyter labextension watch"
   },
   "dependencies": {
     "@jupyter-widgets/base": "^1.1.10 || ^2 || ^3 || ^4 || ^5 || ^6"

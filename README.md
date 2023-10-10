@@ -43,19 +43,19 @@ pip install -e ".[test, examples]"
 When developing your extensions, you need to manually enable your extensions with the
 notebook / lab frontend. For lab, this is done by the command:
 
-```
+```bash
 jupyter labextension develop --overwrite .
 yarn run build
 ```
 
 For classic notebook, you need to run:
 
-```
+```bash
 jupyter nbextension install --sys-prefix --symlink --overwrite --py pySSV
 jupyter nbextension enable --sys-prefix --py pySSV
 ```
 
-Note that the `--symlink` flag doesn't work on Windows, so you will here have to run
+Note that the `--symlink` flag **doesn't work on Windows**, so you will here have to run
 the `install` command every time that you rebuild your extension. For certain installations
 you might also need another flag instead of `--sys-prefix`, but we won't cover the meaning
 of those flags here.

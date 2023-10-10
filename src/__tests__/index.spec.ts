@@ -6,20 +6,20 @@
 
 import { createTestModel } from './utils';
 
-import { ExampleModel } from '../index';
+import { SSVRenderModel } from '../index';
 
-describe('Example', () => {
-  describe('ExampleModel', () => {
+describe('SSVRenderWidget', () => {
+  describe('SSVRenderModel', () => {
     it('should be createable', () => {
-      const model = createTestModel(ExampleModel);
-      expect(model).toBeInstanceOf(ExampleModel);
+      const model = createTestModel(SSVRenderModel);
+      expect(model).toBeInstanceOf(SSVRenderModel);
       expect(model.get('value')).toEqual('Hello World');
     });
 
     it('should be createable with a value', () => {
       const state = { value: 'Foo Bar!' };
-      const model = createTestModel(ExampleModel, state);
-      expect(model).toBeInstanceOf(ExampleModel);
+      const model = createTestModel(SSVRenderModel, state);
+      expect(model).toBeInstanceOf(SSVRenderModel);
       expect(model.get('value')).toEqual('Foo Bar!');
     });
   });

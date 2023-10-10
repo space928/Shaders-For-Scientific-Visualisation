@@ -146,6 +146,7 @@ $RECYCLE.BIN/
 
 **/node_modules/
 pySSV/nbextension/index.*
+/package-lock.json
 
 # Coverage data
 # -------------

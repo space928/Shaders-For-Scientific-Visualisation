@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
-
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 
-from .example import ExampleWidget
+from .ssv_render_widget import SSVRenderWidget
+from .ssv_canvas import SSVCanvas
 from ._version import __version__, version_info
+from .ssv_logging import log
+
 
 def _jupyter_labextension_paths():
     """Called by Jupyter Lab Server to detect if it is a valid labextension and
@@ -47,3 +49,15 @@ def _jupyter_nbextension_paths():
         'dest': 'pySSV',
         'require': 'pySSV/extension'
     }]
+
+
+# Various factory methods
+
+def canvas(size=None):
+    """
+
+    :param size:
+    :return:
+    """
+
+    return SSVCanvas(size)
