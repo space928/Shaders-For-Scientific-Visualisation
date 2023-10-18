@@ -5,7 +5,7 @@ import io
 import logging
 import sys
 import time
-import typing
+from typing import Optional
 from io import BytesIO
 from multiprocessing import Process, Queue
 from queue import Empty
@@ -35,7 +35,7 @@ class SSVRenderProcessServer:
     """
 
     def __init__(self, backend, command_queue_tx, command_queue_rx, log_severity):
-        self._renderer: SSVRender | None = None
+        self._renderer: Optional[SSVRender] = None
         self._command_queue_tx: Queue = command_queue_tx
         self._command_queue_rx: Queue = command_queue_rx
         self.__init_logger(log_severity)

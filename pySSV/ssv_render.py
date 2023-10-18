@@ -2,6 +2,7 @@
 #  Distributed under the terms of the MIT license.
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Optional
 
 import numpy.typing as npt
 
@@ -89,7 +90,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def update_vertex_buffer(self, buffer_id: int, array: npt.NDArray | None):
+    def update_vertex_buffer(self, buffer_id: int, array: Optional[npt.NDArray]):
         """
         Updates the data inside a vertex buffer.
 
@@ -100,9 +101,9 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: str | None,
-                        tess_control_shader: str | None, tess_evaluation_shader: str | None,
-                        geometry_shader: str | None, compute_shader: str | None):
+    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: Optional[str],
+                        tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
+                        geometry_shader: Optional[str], compute_shader: Optional[str]):
         """
         Compiles and registers a shader to a given framebuffer.
 

@@ -2,6 +2,7 @@
 #  Distributed under the terms of the MIT license.
 import logging
 import time
+from typing import Optional
 
 import moderngl
 import numpy as np
@@ -102,7 +103,7 @@ class SSVRenderOpenGL(SSVRender):
             if buffer_id in self._programs and uniform_name in self._programs[buffer_id]:
                 self._programs[buffer_id][uniform_name].value = value
 
-    def update_vertex_buffer(self, buffer_id: int, array: npt.NDArray | None):
+    def update_vertex_buffer(self, buffer_id: int, array: Optional[npt.NDArray]):
         if buffer_id not in self._programs:
             log(f"Attempted to update the vertex buffer for a non-existant program (id={buffer_id})!",
                 logging.ERROR)
@@ -116,9 +117,9 @@ class SSVRenderOpenGL(SSVRender):
         else:
             raise NotImplementedError()
 
-    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: str | None,
-                        tess_control_shader: str | None, tess_evaluation_shader: str | None,
-                        geometry_shader: str | None, compute_shader: str | None):
+    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: Optional[str],
+                        tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
+                        geometry_shader: Optional[str], compute_shader: Optional[str]):
         if buffer_id not in self._frame_buffers:
             log(f"Attempted to register a shader to a non-existant framebuffer (id={buffer_id})!",
                 logging.ERROR)

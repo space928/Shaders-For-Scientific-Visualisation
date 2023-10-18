@@ -4,7 +4,7 @@ import logging
 from multiprocessing import Process, Queue
 from queue import Empty
 from threading import Thread
-from typing import Callable, NewType
+from typing import Callable, NewType, Optional
 
 import numpy.typing as npt
 
@@ -141,7 +141,7 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("UpdU", buffer_id, uniform_name, value))
 
-    def update_vertex_buffer(self, buffer_id: int, array: npt.NDArray | None):
+    def update_vertex_buffer(self, buffer_id: int, array: Optional[npt.NDArray]):
         """
         Updates the data inside a vertex buffer.
 
@@ -151,9 +151,9 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("UpdV", buffer_id, array))
 
-    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: str | None = None,
-                        tess_control_shader: str | None = None, tess_evaluation_shader: str | None = None,
-                        geometry_shader: str | None = None, compute_shader: str | None = None):
+    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: Optional[str] = None,
+                        tess_control_shader: Optional[str] = None, tess_evaluation_shader: Optional[str] = None,
+                        geometry_shader: Optional[str] = None, compute_shader: Optional[str] = None):
         """
         Compiles and registers a shader to a given framebuffer.
 
