@@ -6,9 +6,9 @@
 
 import pytest
 
-from ..ssv_render_widget import ExampleWidget
+from ..ssv_render_widget import SSVRenderWidget
 
 
 def test_example_creation_blank():
-    w = ExampleWidget()
-    assert w.value == 'Hello World'
+    w = SSVRenderWidget()
+    assert w.streaming_mode in {"png", "jpg", "h264"}

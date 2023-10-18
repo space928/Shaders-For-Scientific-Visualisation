@@ -1,7 +1,7 @@
 [build-system]
 requires = [
     "hatchling>=1.3.1",
-    "jupyterlab==3.*",
+    "jupyterlab==3.*"
 ]
 build-backend = "hatchling.build"
 
@@ -36,6 +36,11 @@ classifiers = [
 ]
 dependencies = [
     "ipywidgets>=7.0.0",
+    "moderngl>=5.8.2",
+    "Pillow>=10.0.0; python_version>'3.7'",
+    "Pillow>=9.0.0; python_version<='3.7'",
+    "numpy>=1.21.0; python_version=='3.7'",
+    "numpy>=1.22; python_version>'3.7'",
 ]
 version = "0.1.0.dev0"
 

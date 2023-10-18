@@ -13,14 +13,14 @@ describe('SSVRenderWidget', () => {
     it('should be createable', () => {
       const model = createTestModel(SSVRenderModel);
       expect(model).toBeInstanceOf(SSVRenderModel);
-      expect(model.get('value')).toEqual('Hello World');
+      expect(model.get('streaming_mode')).toEqual('png');
     });
 
     it('should be createable with a value', () => {
-      const state = { value: 'Foo Bar!' };
+      const state = { streaming_mode: 'jpg' };
       const model = createTestModel(SSVRenderModel, state);
       expect(model).toBeInstanceOf(SSVRenderModel);
-      expect(model.get('value')).toEqual('Foo Bar!');
+      expect(model.get('streaming_mode')).toEqual('jpg');
     });
   });
 });
