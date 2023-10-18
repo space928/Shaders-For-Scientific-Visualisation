@@ -5,5 +5,5 @@
 #  Distributed under the terms of the MIT license.
 
 
-version_info = (0, 1, 0, 'dev0')
+version_info = (0, 1, 0)
 __version__ = ".".join(map(str, version_info))
