@@ -42,7 +42,7 @@ dependencies = [
     "numpy>=1.21.0; python_version=='3.7'",
     "numpy>=1.22; python_version>'3.7'",
 ]
-version = "0.1.0.dev0"
+version = "0.1.0"
 
 [project.optional-dependencies]
 docs = [
