@@ -38,8 +38,8 @@ classifiers = [
 dependencies = [
     "ipywidgets>=7.0.0",
     "moderngl>=5.8.2",
-    "Pillow^10.0.0; python_version>'3.7'",
-    "Pillow^9.0.0; python_version<='3.7'"
+    "Pillow>=10.0.0; python_version>'3.7'",
+    "Pillow>=9.0.0; python_version<='3.7'"
 ]
 version = "0.1.0.dev0"
 
