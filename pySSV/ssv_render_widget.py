@@ -23,4 +23,3 @@ class SSVRenderWidget(DOMWidget):
     stream_data = Unicode("test").tag(sync=True)
     mouse_pos_x = Int(0).tag(sync=True)
     mouse_pos_y = Int(0).tag(sync=True)
-    frame_no = Int(0).tag(sync=True)

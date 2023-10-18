@@ -3,7 +3,7 @@
  * Distributed under the terms of the MIT license.
  */
 
-.custom-widget {
-  background-color: lightseagreen;
-  padding: 0px 2px;
+.ssv-render-widget {
+  background-color: #7aacc1;
+  padding: 2px 2px;
 }
