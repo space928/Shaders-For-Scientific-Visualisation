@@ -1,5 +1,5 @@
 {
-  "name": "pySSV",
+  "name": "py-ssv",
   "version": "0.1.0",
   "description": "Leverage the power of shaders for scientific visualisation in Jupyter",
   "keywords": [
@@ -26,7 +26,7 @@
   "types": "./lib/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/space928/Shaders-For-Scientific-Visualisation"
+    "url": "git+https://github.com/space928/Shaders-For-Scientific-Visualisation.git"
   },
   "scripts": {
     "build": "yarn run build:lib && yarn run build:nbextension && yarn run build:labextension:dev",

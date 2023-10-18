@@ -27,6 +27,23 @@ jupyter nbextension enable --py [--sys-prefix|--user|--system] pySSV
 
 ## Getting Started
 
+### Try the example notebook
+Create a suitable python environment (optional if you already have a python environment with jupyterlab setup) and install the package using `pip`:
+```bash
+conda create -n pySSV -c conda-forge python jupyterlab
+conda activate pySSV
+
+pip install pySSV
+```
+Download the example notebook from github:
+```bash
+curl -o introduction.ipynb https://github.com/space928/Shaders-For-Scientific-Visualisation/raw/main/examples/introduction.ipynb
+```
+Start JupyterLab and play around with the notebook:
+```bash
+jupyter lab .\introduction.ipynb
+```
+
 ## Building
 
 Create a dev environment:
