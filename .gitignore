@@ -44,6 +44,7 @@ nosetests.xml
 coverage.xml
 *,cover
 .hypothesis/
+.pytest_cache/
 
 # Translations
 *.mo
@@ -147,6 +148,8 @@ $RECYCLE.BIN/
 **/node_modules/
 pySSV/nbextension/index.*
 /package-lock.json
+.yarn/
+yarn.lock
 
 # Coverage data
 # -------------

@@ -36,6 +36,9 @@ classifiers = [
 ]
 dependencies = [
     "ipywidgets>=7.0.0",
+    "moderngl>=5.8.0",
+    "numpy>=1.26.1",
+    "Pillow>=10.1.0"
 ]
 version = "0.1.0.dev0"
 
