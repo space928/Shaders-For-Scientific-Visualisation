@@ -31,10 +31,10 @@ class SSVRenderProcessLogger(io.StringIO):
 class SSVRenderProcessServer:
     """
     This class listens for render commands and dispatches them to the renderer. This class is intended to be constructed
-    in a dedicated process.
+    in a dedicated process by SSVRenderProcessClient.
     """
 
-    def __init__(self, backend, command_queue_tx, command_queue_rx, log_severity):
+    def __init__(self, backend, command_queue_tx, command_queue_rx, log_severity, timeout):
         self._renderer: Optional[SSVRender] = None
         self._command_queue_tx: Queue = command_queue_tx
         self._command_queue_rx: Queue = command_queue_rx
@@ -44,6 +44,8 @@ class SSVRenderProcessServer:
         self.target_framerate = 60
         self.output_size = (640, 480)
         self.stream_mode = "png"
+        self.watchdog_time = timeout
+        self.last_heartbeat_time = 0
 
         self.__init_render_process(backend)
 
@@ -69,24 +71,47 @@ class SSVRenderProcessServer:
         else:
             delta_time = 1
 
+        self.last_heartbeat_time = last_frame_time
+
+        avg_delta_time = 1 / self.target_framerate
+        frame = 0
         while True:
             # log(f"Parse command finished, timeout={timeout}, running={self.running}")
             current_time = time.time()
+
+            # Check heartbeat
+            if self.running and self.watchdog_time is not None and (current_time - self.last_heartbeat_time) > self.watchdog_time:
+                self.__shutdown("watchdog")
+                return
+
+            # Render the next frame if it's time to
             delta_time = current_time - last_frame_time
             if self.running and (self.target_framerate <= 0 or delta_time >= 1 / self.target_framerate):
                 self.__render_frame()
                 last_frame_time = current_time
 
+                # Frame time stats
+                frame += 1
+                avg_delta_time = avg_delta_time * 0.9 + (time.time() - current_time) * 0.1
+                if frame % 10 == 0:
+                    log(f"Avg frame time: {avg_delta_time*1000:3f} ms", severity=logging.INFO)
+
+            # Work out how long the command processor can block for
             if self.running and self.target_framerate > 0:
                 timeout = max(1 / self.target_framerate - delta_time, 0)
             else:
                 timeout = None
-            self.__parse_render_command(timeout)
+            # Parse render commands
+            if not self.__parse_render_command(timeout):
+                self.__shutdown("requested by client")
+                return
             if self._command_queue_rx.qsize() > 1:
                 # If the command queue is getting backed (due to poor framerate for instance) prioritise that so that
                 # user control is not delayed.
                 for i in range(self._command_queue_rx.qsize()):
-                    self.__parse_render_command(0)
+                    if not self.__parse_render_command(0):
+                        self.__shutdown("requested by client")
+                        return
 
     def __parse_render_command(self, timeout):
         try:
@@ -101,6 +126,10 @@ class SSVRenderProcessServer:
             pass
         elif command == "Stop":
             return False
+        elif command == "HrtB":
+            self.last_heartbeat_time = time.time()
+        elif command == "SWdg":
+            self.watchdog_time = command_args[0]
         elif command == "UFBO":
             # New/Update frame buffer
             self._renderer.update_frame_buffer(*command_args)
@@ -110,6 +139,8 @@ class SSVRenderProcessServer:
             # Delete frame buffer
             self._renderer.delete_frame_buffer(command_args[0])
         elif command == "Rndr":
+            # A render command needs to count as the first heartbeat so that the watchdog doesn't kill us immediately
+            self.last_heartbeat_time = time.time()
             # Start rendering at a given framerate
             self.target_framerate = command_args[0]
             self.stream_mode = command_args[1]
@@ -136,6 +167,10 @@ class SSVRenderProcessServer:
             return False
 
         return True
+
+    def __shutdown(self, reason):
+        log(f"Render process shutting down... ({reason})", severity=logging.INFO)
+        self._command_queue_tx.put(("Stop",))
 
     def __render_frame(self):
         if not self._renderer.render():

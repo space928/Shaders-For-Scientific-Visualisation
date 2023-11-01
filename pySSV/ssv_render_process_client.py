@@ -23,7 +23,13 @@ class SSVRenderProcessClient:
     ``SSVRenderProcessServer``).
     """
 
-    def __init__(self, backend):
+    def __init__(self, backend, timeout=1):
+        """
+        Initialises a new Render Process Client and starts the render process.
+
+        :param backend: the rendering backend to use.
+        :param timeout: the render process watchdog timeout, set to None to disable.
+        """
         self._command_queue_tx = Queue()
         self._command_queue_rx = Queue()
         self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True)
@@ -35,7 +41,7 @@ class SSVRenderProcessClient:
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
         self._render_process = Process(target=SSVRenderProcessServer, daemon=True,
                                        args=(backend, self._command_queue_rx, self._command_queue_tx,
-                                             ssv_logging.get_severity()))
+                                             ssv_logging.get_severity(), timeout))
         self._render_process.start()
 
     def __rx_thread_process(self):
@@ -55,6 +61,9 @@ class SSVRenderProcessClient:
                 for observer in self._on_log_observers:
                     observer(command_args[0])
                 log(command_args[0], raw=True, severity=logging.INFO)
+            elif command == "Stop":
+                # Render server stopping
+                log("Render server shut down.", severity=logging.INFO)
             else:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
@@ -129,6 +138,24 @@ class SSVRenderProcessClient:
         :return:
         """
         self._command_queue_tx.put(("Stop", ))
+
+    def send_heartbeat(self):
+        """
+        Sends a heartbeat to the render process to keep it alive.
+
+        :return:
+        """
+        self._command_queue_tx.put(("HrtB",))
+
+    def set_timeout(self, time=1):
+        """
+        Sets the maximum time the render process will wait for a heartbeat before killing itself.
+        Set to None to disable the watchdog.
+
+        :param time: timeout in seconds.
+        :return:
+        """
+        self._command_queue_tx.put(("SWdg", time))
 
     def update_uniform(self, buffer_id: int, uniform_name: str, value):
         """

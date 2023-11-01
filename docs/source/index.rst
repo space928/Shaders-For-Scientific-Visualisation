@@ -42,6 +42,13 @@ Contents
    develop-install
 
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Module Reference
+
+   reference
+
+
 .. links
 
 .. _`Jupyter widgets`: https://jupyter.org/widgets.html

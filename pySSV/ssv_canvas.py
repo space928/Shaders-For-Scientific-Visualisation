@@ -28,12 +28,20 @@ class SSVCanvas:
         if not standalone:
             self.widget = SSVRenderWidget()
             self.widget.streaming_mode = self.streaming_mode
-        self._render_process_client = SSVRenderProcessClient(backend)
+            self.widget.on_heartbeat(self.__on_heartbeat)
+        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 1)
 
         self._mouse_pos = [0, 0]
 
+    def __del__(self):
+        self.stop()
+        self._render_process_client.stop()
+
     def __on_render(self, stream_data):
         self.widget.stream_data = stream_data
+
+    def __on_heartbeat(self):
+        self._render_process_client.send_heartbeat()
 
     def __on_mouse_x_updated(self, x):
         self._mouse_pos[0] = x.new
