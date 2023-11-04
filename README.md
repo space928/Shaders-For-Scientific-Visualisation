@@ -4,7 +4,8 @@
 **Student ID:** _2576219m_  
 **Supervisor:** _Dr. John Williamson_
 
-[![Build Status](https://travis-ci.org/space928/Shaders-For-Scientific-Visualisation.svg?branch=master)](https://travis-ci.org/space928/pySSV)
+[![Build](https://github.com/space928/Shaders-For-Scientific-Visualisation/actions/workflows/build.yml/badge.svg)](https://github.com/space928/Shaders-For-Scientific-Visualisation/actions/workflows/build.yml)
+[![PyPI - Version](https://img.shields.io/pypi/v/pySSV)](https://pypi.org/project/pySSV/)
 
 A python library for advanced interactive data visualisation on the GPU. This project is being developed for my Level 4
 Individual Project at the University of Glasgow for my Computing Science degree.
