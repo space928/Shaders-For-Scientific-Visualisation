@@ -1,48 +1,38 @@
 [build-system]
-requires = [
-    "hatchling>=1.3.1",
-    "jupyterlab==3.*"
-]
+requires = ["hatchling>=1.5.0", "jupyterlab>=4.0.0,<5", "hatch-nodejs-version>=0.3.2"]
 build-backend = "hatchling.build"
 
 [project]
 name = "pySSV"
-description = "Leverage the power of shaders for scientific visualisation in Jupyter"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.7"
-authors = [
-    { name = "Thomas Mathieson", email = "thomas@mathieson.dev" },
-]
-keywords = [
-    "IPython",
-    "Jupyter",
-    "Widgets",
-    "GLSL",
-    "Shaders",
-    "OpenGL"
-]
+requires-python = ">=3.8"
 classifiers = [
     "Framework :: Jupyter",
+    "Framework :: Jupyter :: JupyterLab",
+    "Framework :: Jupyter :: JupyterLab :: 4",
+    "Framework :: Jupyter :: JupyterLab :: Extensions",
+    "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "ipywidgets>=7.0.0",
+    "ipywidgets>=8.0.0",
+    "numpy>=1.22.0; python_version<='3.10'",
+    "numpy>=1.24.0; python_version=='3.11'",
+    "numpy>=1.26.0; python_version=='3.12'",
     "moderngl>=5.8.2",
-    "Pillow>=10.0.0; python_version>'3.7'",
-    "Pillow>=9.0.0; python_version<='3.7'",
-    "numpy>=1.21.0; python_version=='3.7'",
-    "numpy>=1.22; python_version>'3.7'",
+    "Pillow>=10.1.0"
 ]
-version = "0.1.0"
+dynamic = ["version", "description", "authors", "urls", "keywords"]
 
 [project.optional-dependencies]
 docs = [
@@ -62,59 +52,52 @@ test = [
     "pytest>=6.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/space928/Shaders-For-Scientific-Visualisation"
+[tool.hatch.version]
+source = "nodejs"
 
-[tool.hatch.build]
-artifacts = [
-    "pySSV/nbextension/index.*",
-    "pySSV/labextension/*.tgz",
-    "pySSV/labextension",
-]
-
-[tool.hatch.build.targets.wheel.shared-data]
-"pySSV/nbextension" = "share/jupyter/nbextensions/pySSV"
-"pySSV/labextension" = "share/jupyter/labextensions/pySSV"
-"./install.json" = "share/jupyter/labextensions/pySSV/install.json"
-"./pySSV.json" = "etc/jupyter/nbconfig/notebook.d/pySSV.json"
+[tool.hatch.metadata.hooks.nodejs]
+fields = ["description", "authors", "urls"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    ".github",
-]
+artifacts = ["pySSV/labextension"]
+exclude = [".github", "binder"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"pySSV/labextension" = "share/jupyter/labextensions/py-ssv"
+"install.json" = "share/jupyter/labextensions/py-ssv/install.json"
+
+[tool.hatch.build.hooks.version]
+path = "pySSV/_version.py"
 
 [tool.hatch.build.hooks.jupyter-builder]
+dependencies = ["hatch-jupyter-builder>=0.5"]
 build-function = "hatch_jupyter_builder.npm_builder"
 ensured-targets = [
-    "pySSV/nbextension/index.js",
+    "pySSV/labextension/static/style.js",
     "pySSV/labextension/package.json",
 ]
-skip-if-exists = [
-    "pySSV/nbextension/index.js",
-    "pySSV/labextension/package.json",
-]
-dependencies = [
-    "hatch-jupyter-builder>=0.5.0",
-]
+skip-if-exists = ["pySSV/labextension/static/style.js"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]
-path = "."
 build_cmd = "build:prod"
+npm = ["jlpm"]
 
-[tool.tbump]
-field = [
-    { name = "channel", default = "" },
-    { name = "release", default = "" },
+[tool.hatch.build.hooks.jupyter-builder.editable-build-kwargs]
+build_cmd = "install:extension"
+npm = ["jlpm"]
+source_dir = "src"
+build_dir = "pySSV/labextension"
+
+[tool.jupyter-releaser.options]
+version_cmd = "hatch version"
+
+[tool.jupyter-releaser.hooks]
+before-build-npm = [
+    "python -m pip install 'jupyterlab>=4.0.0,<5'",
+    "jlpm",
+    "jlpm build:prod"
 ]
-file = [
-    { src = "pyproject.toml", version_template = "version = \"{major}.{minor}.{patch}{channel}{release}\"" },
-    { src = "pySSV/_version.py" },
-]
+before-build-python = ["jlpm clean:all"]
 
-[tool.tbump.version]
-current = "0.1.0.dev0"
-regex = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)((?P<channel>a|b|rc|.dev)(?P<release>\\d+))?"
-
-[tool.tbump.git]
-message_template = "Bump to {new_version}"
-tag_template = "v{new_version}"
+[tool.check-wheel-contents]
+ignore = ["W002"]

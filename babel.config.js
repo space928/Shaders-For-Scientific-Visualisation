@@ -3,16 +3,4 @@
  * Distributed under the terms of the MIT license.
  */
 
-module.exports = {
-  sourceMap: 'inline',
-  presets: [
-    [
-      '@babel/preset-env',
-      {
-        targets: {
-          node: 'current',
-        },
-      },
-    ],
-  ],
-};
+module.exports = require("@jupyterlab/testutils/lib/babel.config");

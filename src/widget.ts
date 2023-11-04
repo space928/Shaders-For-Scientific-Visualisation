@@ -6,13 +6,13 @@
 import {
   DOMWidgetModel,
   DOMWidgetView,
-  ISerializers,
-} from '@jupyter-widgets/base';
+  ISerializers
+} from "@jupyter-widgets/base";
 
-import { MODULE_NAME, MODULE_VERSION } from './version';
+import { MODULE_NAME, MODULE_VERSION } from "./version";
 
 // Import the CSS
-import '../css/widget.css';
+import "../css/widget.css";
 
 enum StreamingMode {
   PNG = "png",
@@ -38,23 +38,23 @@ export class SSVRenderModel extends DOMWidgetModel {
   }
 
   static serializers: ISerializers = {
-    ...DOMWidgetModel.serializers,
+    ...DOMWidgetModel.serializers
     // Add any extra serializers here
   };
 
-  static model_name = 'SSVRenderModel';
+  static model_name = "SSVRenderModel";
   static model_module = MODULE_NAME;
   static model_module_version = MODULE_VERSION;
-  static view_name = 'SSVRenderView'; // Set to null if no view
+  static view_name = "SSVRenderView"; // Set to null if no view
   static view_module = MODULE_NAME; // Set to null if no view
   static view_module_version = MODULE_VERSION;
 }
 
 export class SSVRenderView extends DOMWidgetView {
-  private _stream_img_element: HTMLImageElement | null;
+  private _stream_img_element: HTMLImageElement | null = null;
 
   render() {
-    this.el.classList.add('ssv-render-widget');
+    this.el.classList.add("ssv-render-widget");
 
     switch (this.model.get("streaming_mode")) {
       case StreamingMode.JPG:
@@ -63,40 +63,47 @@ export class SSVRenderView extends DOMWidgetView {
         this.el.appendChild(this._stream_img_element);
         break;
       default:
-        console.error(`Unsupported streaming mode '${this.model.get("streaming_mode")}'!`);
+        console.error(
+          `Unsupported streaming mode '${this.model.get("streaming_mode")}'!`
+        );
     }
 
     this.stream_data_changed();
     this.model.on("change:stream_data", this.stream_data_changed, this);
 
-    if(this._stream_img_element) {
+    if (this._stream_img_element) {
       setInterval(() => {
         this.model.trigger("heartbeat");
       }, 500);
 
       //let mousePos = { x: 0, y: 0 };
-      this._stream_img_element.addEventListener('mousemove', (event: MouseEvent) => {
-        /*mousePos = {
-          x: event.clientX,// / target.width,
-          y: event.clientY,// / target.height
-        };*/
+      this._stream_img_element.addEventListener(
+        "mousemove",
+        (event: MouseEvent) => {
+          /*mousePos = {
+            x: event.clientX,// / target.width,
+            y: event.clientY,// / target.height
+          };*/
 
         if(event?.target == null || !(event.target instanceof HTMLElement))
           return;
 
-        const rect = event.target.getBoundingClientRect();
-        this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
-        this.model.set("mouse_pos_y", Math.round(rect.height - (event.clientY - rect.top)));
-        this.model.save_changes();
-      });
+          const rect = event.target.getBoundingClientRect();
+          this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
+          this.model.set(
+            "mouse_pos_y",
+            Math.round(rect.height - (event.clientY - rect.top))
+          );
+          this.model.save_changes();
+        }
+      );
     }
   }
 
   stream_data_changed() {
-    if(!this._stream_img_element)
-      return;
+    if (!this._stream_img_element) return;
 
     //this.el.textContent = this.model.get('stream_data');
-    this._stream_img_element.src = this.model.get('stream_data');
+    this._stream_img_element.src = this.model.get("stream_data");
   }
 }

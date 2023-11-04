@@ -3,5 +3,5 @@
  * Distributed under the terms of the MIT license.
  */
 
-export * from './version';
-export * from './widget';
+export * from "./version";
+export * from "./widget";
