@@ -9,6 +9,9 @@ import typing
 # logging code more concise.
 
 class SSVFormatter(logging.Formatter):
+    def __init__(self, fmt):
+        super().__init__(fmt)
+
     def format(self, record: logging.LogRecord) -> str:
         if hasattr(record, "raw") and record.raw:
             return record.getMessage()

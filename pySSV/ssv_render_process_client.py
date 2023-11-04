@@ -23,7 +23,13 @@ class SSVRenderProcessClient:
     ``SSVRenderProcessServer``).
     """
 
-    def __init__(self, backend):
+    def __init__(self, backend, timeout=1):
+        """
+        Initialises a new Render Process Client and starts the render process.
+
+        :param backend: the rendering backend to use.
+        :param timeout: the render process watchdog timeout, set to None to disable.
+        """
         self._command_queue_tx = Queue()
         self._command_queue_rx = Queue()
         self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True)
@@ -35,8 +41,9 @@ class SSVRenderProcessClient:
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
         self._render_process = Process(target=SSVRenderProcessServer, daemon=True,
                                        args=(backend, self._command_queue_rx, self._command_queue_tx,
-                                             ssv_logging.get_severity()))
+                                             ssv_logging.get_severity(), timeout))
         self._render_process.start()
+        self._is_alive = True
 
     def __rx_thread_process(self):
         while True:
@@ -55,9 +62,17 @@ class SSVRenderProcessClient:
                 for observer in self._on_log_observers:
                     observer(command_args[0])
                 log(command_args[0], raw=True, severity=logging.INFO)
+            elif command == "Stop":
+                # Render server stopping
+                log("Render server shut down.", severity=logging.INFO)
+                self._is_alive = False
             else:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
+
+    @property
+    def is_alive(self):
+        return self._is_alive
 
     def subscribe_on_render(self, observer: OnRenderObserverDelegate):
         """
@@ -112,15 +127,17 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("DFBO", buffer_id))
 
-    def render(self, target_framerate: float, stream_mode: str):
+    def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[int] = None):
         """
         Starts rendering frames at the given framerate.
 
         :param target_framerate: the framerate to render at. Set to -1 to render a single frame.
         :param stream_mode: the streaming format to use to send the frames to the widget.
+        :param encode_quality: the quality value for the stream encoder. When using jpg, setting to 100 disables
+                               compression; when using png, setting to 0 disables compression.
         :return:
         """
-        self._command_queue_tx.put(("Rndr", target_framerate, stream_mode))
+        self._command_queue_tx.put(("Rndr", target_framerate, stream_mode, encode_quality))
 
     def stop(self):
         """
@@ -129,6 +146,24 @@ class SSVRenderProcessClient:
         :return:
         """
         self._command_queue_tx.put(("Stop", ))
+
+    def send_heartbeat(self):
+        """
+        Sends a heartbeat to the render process to keep it alive.
+
+        :return:
+        """
+        self._command_queue_tx.put(("HrtB",))
+
+    def set_timeout(self, time=1):
+        """
+        Sets the maximum time the render process will wait for a heartbeat before killing itself.
+        Set to None to disable the watchdog.
+
+        :param time: timeout in seconds.
+        :return:
+        """
+        self._command_queue_tx.put(("SWdg", time))
 
     def update_uniform(self, buffer_id: int, uniform_name: str, value):
         """
@@ -176,6 +211,14 @@ class SSVRenderProcessClient:
         :param full: whether to log *all* of the OpenGL context information (including extensions).
         """
         self._command_queue_tx.put(("LogC", full))
+
+    def dbg_log_frame_times(self, enabled=True):
+        """
+        Enables or disables frame time logging.
+
+        :param enabled: whether to log frame times.
+        """
+        self._command_queue_tx.put(("LogT", enabled))
 
     def dbg_render_test(self):
         """

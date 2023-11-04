@@ -6,10 +6,11 @@
 import {
   DOMWidgetModel,
   DOMWidgetView,
-  ISerializers
+  ISerializers,
+  WidgetView
 } from "@jupyter-widgets/base";
 
-import { MODULE_NAME, MODULE_VERSION } from "./version";
+import {MODULE_NAME, MODULE_VERSION} from "./version";
 
 // Import the CSS
 import "../css/widget.css";
@@ -50,13 +51,12 @@ export class SSVRenderModel extends DOMWidgetModel {
   static view_module_version = MODULE_VERSION;
 }
 
-/*type MouseEvent = {
-  clientX: number;
-  clientY: number;
-}*/
-
 export class SSVRenderView extends DOMWidgetView {
   private _stream_img_element: HTMLImageElement | null = null;
+
+  initialize(parameters: WidgetView.IInitializeParameters) {
+    super.initialize(parameters);
+  }
 
   render() {
     this.el.classList.add("ssv-render-widget");
@@ -77,14 +77,9 @@ export class SSVRenderView extends DOMWidgetView {
     this.model.on("change:stream_data", this.stream_data_changed, this);
 
     if (this._stream_img_element) {
-      /*let frame_no = 0;
-      const on_anim_frame = () => {
-        this.model.set("frame_no", frame_no++);
-        this.model.save_changes();
-
-        requestAnimationFrame(on_anim_frame);
-      };
-      requestAnimationFrame(on_anim_frame);*/
+      setInterval(() => {
+        this.send({"heartbeat": 0});
+      }, 500);
 
       //let mousePos = { x: 0, y: 0 };
       this._stream_img_element.addEventListener(
@@ -95,15 +90,12 @@ export class SSVRenderView extends DOMWidgetView {
             y: event.clientY,// / target.height
           };*/
 
-          if (event?.target === null || !(event.target instanceof HTMLElement))
+          if (event?.target == null || !(event.target instanceof HTMLElement))
             return;
 
           const rect = event.target.getBoundingClientRect();
           this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
-          this.model.set(
-            "mouse_pos_y",
-            Math.round(rect.height - (event.clientY - rect.top))
-          );
+          this.model.set("mouse_pos_y", Math.round(rect.height - (event.clientY - rect.top)));
           this.model.save_changes();
         }
       );
