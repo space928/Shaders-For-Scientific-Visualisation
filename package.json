@@ -1,6 +1,6 @@
 {
     "name": "py-ssv",
-    "version": "0.1.1",
+    "version": "0.2.1",
     "description": "Leverage the power of shaders for scientific visualisation in Jupyter",
     "keywords": [
         "jupyter",
