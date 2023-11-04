@@ -44,6 +44,7 @@ nbsphinx_widgets_path = ""
 # Ensure our extension is available:
 import sys
 from os.path import dirname, join as pjoin
+
 docs = dirname(dirname(__file__))
 root = dirname(docs)
 sys.path.insert(0, root)
@@ -75,6 +76,7 @@ author = 'Thomas Mathieson'
 
 # get version from python package:
 import os
+
 here = os.path.dirname(__file__)
 repo = os.path.join(here, '..', '..')
 _version_py = os.path.join(repo, 'pySSV', '_version.py')
@@ -105,7 +107,6 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
-
 # -- Options for HTML output ----------------------------------------------
 
 
@@ -120,12 +121,10 @@ todo_include_todos = False
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'pySSVdoc'
-
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -155,18 +154,16 @@ latex_documents = [
      'Thomas Mathieson', 'manual'),
 ]
 
-
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
     (master_doc,
-    'pySSV',
-    'pySSV Documentation',
+     'pySSV',
+     'pySSV Documentation',
      [author], 1)
 ]
-
 
 # -- Options for Texinfo output -------------------------------------------
 
@@ -183,17 +180,22 @@ texinfo_documents = [
      'Miscellaneous'),
 ]
 
-
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+    "rtd": ("https://docs.readthedocs.io/en/stable/", None),
+    "python": ("https://docs.python.org/3/", None),
+    "sphinx": ("https://www.sphinx-doc.org/en/master/", None),
+}
 
 # Read The Docs
 # on_rtd is whether we are on readthedocs.org, this line of code grabbed from
 # docs.readthedocs.org
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
+html_theme = 'sphinx_rtd_theme'
 if not on_rtd:  # only import and set the theme if we're building docs locally
     import sphinx_rtd_theme
+
     html_theme = 'sphinx_rtd_theme'
     html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
@@ -203,10 +205,12 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # Uncomment this line if you have know exceptions in your included notebooks
 # that nbsphinx complains about:
 #
-nbsphinx_allow_errors = True # exception ipstruct.py ipython_genutils
+nbsphinx_allow_errors = True  # exception ipstruct.py ipython_genutils
 
 from sphinx.util import logging
+
 logger = logging.getLogger(__name__)
+
 
 def setup(app):
     def add_scripts(app):
@@ -214,4 +218,5 @@ def setup(app):
             if not os.path.exists(os.path.join(here, '_static', fname)):
                 logger.warning('missing javascript file: %s' % fname)
             app.add_js_file(fname)
+
     app.connect('builder-inited', add_scripts)
