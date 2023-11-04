@@ -54,7 +54,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: extension-artifacts
-        path: dist/pySSV*
+        path: dist/pyssv*
         if-no-files-found: error
 
   test_isolated:
@@ -77,7 +77,7 @@ jobs:
         sudo rm -rf $(which node)
         sudo rm -rf $(which node)
 
-        pip install "jupyterlab>=4.0.0,<5" pySSV*.whl
+        pip install "jupyterlab>=4.0.0,<5" pyssv*.whl
 
 
         jupyter labextension list
@@ -107,7 +107,7 @@ jobs:
     - name: Install the extension
       run: |
         set -eux
-        python -m pip install "jupyterlab>=4.0.0,<5" pySSV*.whl
+        python -m pip install "jupyterlab>=4.0.0,<5" pyssv*.whl
 
     - name: Install dependencies
       working-directory: ui-tests
