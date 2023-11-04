@@ -3,4 +3,4 @@
  * Distributed under the terms of the MIT license.
  */
 
-import './widget.css';
+import "./widget.css";

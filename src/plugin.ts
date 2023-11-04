@@ -3,17 +3,17 @@
  * Distributed under the terms of the MIT license.
  */
 
-import { Application, IPlugin } from '@lumino/application';
+import { Application, IPlugin } from "@lumino/application";
 
-import { Widget } from '@lumino/widgets';
+import { Widget } from "@lumino/widgets";
 
-import { IJupyterWidgetRegistry } from '@jupyter-widgets/base';
+import { IJupyterWidgetRegistry } from "@jupyter-widgets/base";
 
-import * as widgetExports from './widget';
+import * as widgetExports from "./widget";
 
-import { MODULE_NAME, MODULE_VERSION } from './version';
+import { MODULE_NAME, MODULE_VERSION } from "./version";
 
-const EXTENSION_ID = 'pySSV:plugin';
+const EXTENSION_ID = "pySSV:plugin";
 
 const pySSVPlugin: IPlugin<Application<Widget>, void> = {
   id: EXTENSION_ID,

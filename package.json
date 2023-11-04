@@ -156,8 +156,8 @@
             "@typescript-eslint/no-namespace": "off",
             "@typescript-eslint/no-use-before-define": "off",
             "@typescript-eslint/quotes": [
-                "error",
-                "single",
+                "warn",
+                "double",
                 {
                     "avoidEscape": true,
                     "allowTemplateLiterals": false
@@ -165,10 +165,16 @@
             ],
             "curly": [
                 "error",
-                "all"
+                "multi-or-nest",
+                "consistent"
             ],
             "eqeqeq": "error",
-            "prefer-arrow-callback": "error"
+            "prefer-arrow-callback": "error",
+            "function-call-argument-newline": [
+                "warn",
+                "consistent"
+            ],
+            "function-paren-newline": "off"
         }
     },
     "eslintIgnore": [
