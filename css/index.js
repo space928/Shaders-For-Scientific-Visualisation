@@ -3,7 +3,4 @@
  * Distributed under the terms of the MIT license.
  */
 
-.ssv-render-widget {
-  background-color: #7aacc1;
-  padding: 2px;
-}
+import "./widget.css";

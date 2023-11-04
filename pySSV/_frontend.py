@@ -9,5 +9,5 @@
 Information about the frontend package of the widgets.
 """
 
-module_name = "pySSV"
+module_name = "py-ssv"
 module_version = "^0.1.0"
