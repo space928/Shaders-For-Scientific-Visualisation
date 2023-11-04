@@ -10,7 +10,9 @@ node_modules/
 pySSV/labextension
 # Version file is handled by hatchling
 pySSV/_version.py
-docs/source/_static/
+# Docs
+embed-bundle.js
+embed-bundle.js.map
 
 # Integration tests
 ui-tests/test-results/
