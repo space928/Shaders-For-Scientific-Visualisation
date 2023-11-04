@@ -6,7 +6,7 @@
 import {
   DOMWidgetModel,
   DOMWidgetView,
-  ISerializers,
+  ISerializers
 } from '@jupyter-widgets/base';
 
 import { MODULE_NAME, MODULE_VERSION } from './version';
@@ -38,7 +38,7 @@ export class SSVRenderModel extends DOMWidgetModel {
   }
 
   static serializers: ISerializers = {
-    ...DOMWidgetModel.serializers,
+    ...DOMWidgetModel.serializers
     // Add any extra serializers here
   };
 
@@ -56,7 +56,7 @@ export class SSVRenderModel extends DOMWidgetModel {
 }*/
 
 export class SSVRenderView extends DOMWidgetView {
-  private _stream_img_element: HTMLImageElement | null;
+  private _stream_img_element: HTMLImageElement | null = null;
 
   render() {
     this.el.classList.add('ssv-render-widget');
@@ -74,7 +74,7 @@ export class SSVRenderView extends DOMWidgetView {
     this.stream_data_changed();
     this.model.on("change:stream_data", this.stream_data_changed, this);
 
-    if(this._stream_img_element) {
+    if (this._stream_img_element) {
       /*let frame_no = 0;
       const on_anim_frame = () => {
         this.model.set("frame_no", frame_no++);
@@ -91,7 +91,7 @@ export class SSVRenderView extends DOMWidgetView {
             y: event.clientY,// / target.height
           };*/
 
-          if(event?.target == null || !(event.target instanceof HTMLElement))
+          if (event?.target === null || !(event.target instanceof HTMLElement))
             return;
 
           const rect = event.target.getBoundingClientRect();

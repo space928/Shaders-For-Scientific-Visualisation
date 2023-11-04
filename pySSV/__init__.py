@@ -1,53 +1,26 @@
-#!/usr/bin/env python
-# coding: utf-8
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 
 from .ssv_render_widget import SSVRenderWidget
 from .ssv_canvas import SSVCanvas
-from ._version import __version__, version_info
 from .ssv_logging import log
+
+try:
+    from ._version import __version__
+except ImportError:
+    # Fallback when using the package in dev mode without installing in editable mode with pip. It is highly
+    # recommended to install the package from a stable release or in editable mode:
+    # https://pip.pypa.io/en/stable/topics/local-project-installs/#editable-installs
+    import warnings
+
+    warnings.warn("Importing 'pySSV' outside a proper installation.")
+    __version__ = "dev"
 
 
 def _jupyter_labextension_paths():
-    """Called by Jupyter Lab Server to detect if it is a valid labextension and
-    to install the widget
-    Returns
-    =======
-    src: Source directory name to copy files from. Webpack outputs generated files
-        into this directory and Jupyter Lab copies from this directory during
-        widget installation
-    dest: Destination directory name to install widget files to. Jupyter Lab copies
-        from `src` directory into <jupyter path>/labextensions/<dest> directory
-        during widget installation
-    """
     return [{
-        'src': 'labextension',
-        'dest': 'pySSV',
-    }]
-
-
-def _jupyter_nbextension_paths():
-    """Called by Jupyter Notebook Server to detect if it is a valid nbextension and
-    to install the widget
-    Returns
-    =======
-    section: The section of the Jupyter Notebook Server to change.
-        Must be 'notebook' for widget extensions
-    src: Source directory name to copy files from. Webpack outputs generated files
-        into this directory and Jupyter Notebook copies from this directory during
-        widget installation
-    dest: Destination directory name to install widget files to. Jupyter Notebook copies
-        from `src` directory into <jupyter path>/nbextensions/<dest> directory
-        during widget installation
-    require: Path to importable AMD Javascript module inside the
-        <jupyter path>/nbextensions/<dest> directory
-    """
-    return [{
-        'section': 'notebook',
-        'src': 'nbextension',
-        'dest': 'pySSV',
-        'require': 'pySSV/extension'
+        "src": "labextension",
+        "dest": "py-ssv"
     }]
 
 

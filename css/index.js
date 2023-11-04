@@ -3,5 +3,4 @@
  * Distributed under the terms of the MIT license.
  */
 
-
-module.exports = require('@jupyterlab/testutils/lib/babel.config');
+import './widget.css';
