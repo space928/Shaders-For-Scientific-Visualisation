@@ -29,7 +29,7 @@
     "types": "./lib/index.d.ts",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/space928/Shaders-For-Scientific-Visualisation.git"
+        "url": "https://github.com/space928/Shaders-For-Scientific-Visualisation.git"
     },
     "scripts": {
         "build": "jlpm build:lib && jlpm build:labextension:dev",
