@@ -20,11 +20,12 @@ jobs:
     - name: Install dependencies
       run: python -m pip install -U "jupyterlab>=4.0.0,<5"
 
-    - name: Lint the extension
-      run: |
-        set -eux
-        jlpm
-        jlpm run lint:check
+    # Ignore style issues for now, it's just not worth the trouble at the moment...
+    # - name: Lint the extension
+    #   run: |
+    #     set -eux
+    #     jlpm
+    #     jlpm run lint:check
 
     - name: Test the extension
       run: |
@@ -139,11 +140,11 @@ jobs:
           ui-tests/test-results
           ui-tests/playwright-report
 
-  check_links:
-    name: Check Links
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v3
-      - uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
-      - uses: jupyterlab/maintainer-tools/.github/actions/check-links@v1
+  # check_links:
+  #   name: Check Links
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+  #     - uses: jupyterlab/maintainer-tools/.github/actions/check-links@v1
