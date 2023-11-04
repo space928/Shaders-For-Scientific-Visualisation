@@ -30,9 +30,10 @@ class SSVRenderWidget(DOMWidget):
         super().__init__(**kwargs)
         self._heartbeat_handlers = CallbackDispatcher()
         self.on_msg(self._handle_widget_msg)
+        self._view_count = 0
 
     def _handle_widget_msg(self, _, content, buffers):
-        if content.get('event', '') == 'heartbeat':
+        if "heartbeat" in content and self._view_count > 0:
             self._heartbeat_handlers()
 
     def on_heartbeat(self, callback, remove=False):

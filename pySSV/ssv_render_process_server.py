@@ -46,6 +46,14 @@ class SSVRenderProcessServer:
         self.stream_mode = "png"
         self.watchdog_time = timeout
         self.last_heartbeat_time = 0
+        self.encode_quality = None
+        self.log_frame_timing = False
+
+        # Frame time stats for debugging
+        self.avg_delta_time = 1/self.target_framerate
+        self.max_delta_time = 1/self.target_framerate
+        self.avg_delta_time_encode = 1 / self.target_framerate
+        self.max_delta_time_encode = 1 / self.target_framerate
 
         self.__init_render_process(backend)
 
@@ -73,7 +81,6 @@ class SSVRenderProcessServer:
 
         self.last_heartbeat_time = last_frame_time
 
-        avg_delta_time = 1 / self.target_framerate
         frame = 0
         while True:
             # log(f"Parse command finished, timeout={timeout}, running={self.running}")
@@ -91,10 +98,19 @@ class SSVRenderProcessServer:
                 last_frame_time = current_time
 
                 # Frame time stats
-                frame += 1
-                avg_delta_time = avg_delta_time * 0.9 + (time.time() - current_time) * 0.1
-                if frame % 10 == 0:
-                    log(f"Avg frame time: {avg_delta_time*1000:3f} ms", severity=logging.INFO)
+                if self.log_frame_timing:
+                    frame += 1
+                    if frame % 60 == 0:
+                        log(f"Render time: Avg={self.avg_delta_time*1000:.2f} ms "
+                            f"Max={self.max_delta_time*1000:.2f} ms \t// "
+                            f"Encode time Avg={self.avg_delta_time_encode*1000:.2f} ms "
+                            f"Max={self.max_delta_time_encode*1000:.2f} ms   \t// "
+                            f"timeout={timeout*1000:.2f} ms \t// "
+                            f"FPS: Avg={1/(self.avg_delta_time+self.avg_delta_time_encode):.1f} "
+                            f"Avg+Sync={1/(self.avg_delta_time+self.avg_delta_time_encode+timeout):.1f} "
+                            f"Min={1/(self.max_delta_time+self.max_delta_time_encode):.1f}", severity=logging.INFO)
+                        self.max_delta_time = 0
+                        self.max_delta_time_encode = 0
 
             # Work out how long the command processor can block for
             if self.running and self.target_framerate > 0:
@@ -144,6 +160,7 @@ class SSVRenderProcessServer:
             # Start rendering at a given framerate
             self.target_framerate = command_args[0]
             self.stream_mode = command_args[1]
+            self.encode_quality = command_args[2]
             self.running = self.target_framerate != 0
         elif command == "UpdU":
             # Update uniform
@@ -157,6 +174,9 @@ class SSVRenderProcessServer:
         elif command == "LogC":
             # Log Context Info
             self._renderer.log_context_info(command_args[0])
+        elif command == "LogT":
+            # Log frame times
+            self.log_frame_timing = command_args[0]
         elif command == "DbRT":
             # Debug Render Test
             if isinstance(self._renderer, SSVRenderOpenGL):
@@ -173,26 +193,40 @@ class SSVRenderProcessServer:
         self._command_queue_tx.put(("Stop",))
 
     def __render_frame(self):
+        start_time = time.time()
+        render_time = start_time
         if not self._renderer.render():
             self.running = False
         if self.stream_mode == "png":
-            stream_data = self.__to_png(self._renderer.get_frame())
+            frame = self._renderer.get_frame()
+            render_time = time.time()
+            stream_data = self.__to_png(frame)
         elif self.stream_mode == "jpg":
-            stream_data = self.__to_jpg(self._renderer.get_frame(3))
+            frame = self._renderer.get_frame(3)
+            render_time = time.time()
+            stream_data = self.__to_jpg(frame)
         else:
             stream_data = None
+        if self.log_frame_timing:
+            encode_time = time.time()
+            self.max_delta_time = max(self.max_delta_time, render_time - start_time)
+            self.max_delta_time_encode = max(self.max_delta_time_encode, encode_time - render_time)
+            self.avg_delta_time = self.avg_delta_time * 0.9 + (render_time - start_time) * 0.1
+            self.avg_delta_time_encode = self.avg_delta_time_encode * 0.9 + (encode_time - render_time) * 0.1
         self._command_queue_tx.put(("NFrm", stream_data))
 
     def __to_png(self, frame):
         image = Image.frombytes('RGBA', self.output_size, frame)
         image = image.transpose(Image.FLIP_TOP_BOTTOM)
         image_bytes = BytesIO()
-        image.save(image_bytes, format='png')
+        quality = self.encode_quality if self.encode_quality is not None else 6
+        image.save(image_bytes, format='png', optimize=False, compress_level=quality)
         return "data:image/png;base64,{}".format(base64.b64encode(image_bytes.getvalue()).decode('ascii'))
 
     def __to_jpg(self, frame):
         image = Image.frombytes('RGB', self.output_size, frame)
         image = image.transpose(Image.FLIP_TOP_BOTTOM)
         image_bytes = BytesIO()
-        image.save(image_bytes, format='jpeg')
+        quality = self.encode_quality if self.encode_quality is not None else 75
+        image.save(image_bytes, format='jpeg', quality=quality)
         return "data:image/jpg;base64,{}".format(base64.b64encode(image_bytes.getvalue()).decode('ascii'))

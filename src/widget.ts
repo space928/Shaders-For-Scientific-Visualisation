@@ -6,10 +6,11 @@
 import {
   DOMWidgetModel,
   DOMWidgetView,
-  ISerializers
+  ISerializers,
+  WidgetView
 } from "@jupyter-widgets/base";
 
-import { MODULE_NAME, MODULE_VERSION } from "./version";
+import {MODULE_NAME, MODULE_VERSION} from "./version";
 
 // Import the CSS
 import "../css/widget.css";
@@ -53,6 +54,10 @@ export class SSVRenderModel extends DOMWidgetModel {
 export class SSVRenderView extends DOMWidgetView {
   private _stream_img_element: HTMLImageElement | null = null;
 
+  initialize(parameters: WidgetView.IInitializeParameters) {
+    super.initialize(parameters);
+  }
+
   render() {
     this.el.classList.add("ssv-render-widget");
 
@@ -73,7 +78,7 @@ export class SSVRenderView extends DOMWidgetView {
 
     if (this._stream_img_element) {
       setInterval(() => {
-        this.model.trigger("heartbeat");
+        this.send({"heartbeat": 0});
       }, 500);
 
       //let mousePos = { x: 0, y: 0 };
@@ -85,15 +90,12 @@ export class SSVRenderView extends DOMWidgetView {
             y: event.clientY,// / target.height
           };*/
 
-        if(event?.target == null || !(event.target instanceof HTMLElement))
-          return;
+          if (event?.target == null || !(event.target instanceof HTMLElement))
+            return;
 
           const rect = event.target.getBoundingClientRect();
           this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
-          this.model.set(
-            "mouse_pos_y",
-            Math.round(rect.height - (event.clientY - rect.top))
-          );
+          this.model.set("mouse_pos_y", Math.round(rect.height - (event.clientY - rect.top)));
           this.model.save_changes();
         }
       );

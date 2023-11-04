@@ -25,6 +25,7 @@ class SSVCanvas:
         self.standalone = standalone
         self.target_framerate = target_framerate
         self.streaming_mode = "jpg"
+        self.backend = backend
         if not standalone:
             self.widget = SSVRenderWidget()
             self.widget.streaming_mode = self.streaming_mode
@@ -51,8 +52,21 @@ class SSVCanvas:
         self._mouse_pos[1] = y.new
         self._render_process_client.update_uniform(-1, "iMouse", tuple(self._mouse_pos))
 
-    def run(self, stream_mode="jpg"):
+    def run(self, stream_mode="jpg", stream_quality=None, never_kill=False) -> None:
+        """
+        Starts the render loop and displays the Jupyter Widget (or render window if in standalone mode).
+        :param stream_mode: the encoding format to use to transmit rendered frames from the render process to the
+                            Jupyter widget. (Currently supports: `jpg`, `png`).
+        :param stream_quality: the encoding quality to use for the given encoding format. (For advanced users only)
+        :param never_kill: disables the watchdog responsible for stopping the render process when the widget is no
+                           longer being displayed. *Warning*: The only way to stop a renderer started with this enabled
+                           is to restart the Jupyter kernel.
+        """
         self.streaming_mode = stream_mode
+
+        if not self._render_process_client.is_alive:
+            raise ConnectionError("Render process is no longer connected. Create a new SSVCanvas and try again.")
+
         self._render_process_client.subscribe_on_render(self.__on_render)
 
         if not self.standalone:
@@ -62,10 +76,19 @@ class SSVCanvas:
             self.widget.observe(lambda x: self.__on_mouse_x_updated(x), names=["mouse_pos_x"])
             self.widget.observe(lambda y: self.__on_mouse_y_updated(y), names=["mouse_pos_y"])
 
-        self._render_process_client.render(self.target_framerate, self.streaming_mode)
+        self._render_process_client.set_timeout(None if never_kill else 1)
+        self._render_process_client.render(self.target_framerate, self.streaming_mode, stream_quality)
 
-    def stop(self):
-        self._render_process_client.render(0, self.streaming_mode)
+    def stop(self, force=False) -> None:
+        """
+        Stops the current canvas from rendering continuously. The renderer is not released and can be restarted.
+        :param force: kills the render process and releases resources. SSVCanvases cannot be restarted if they have
+                      been force stopped.
+        """
+        if force:
+            self._render_process_client.stop()
+        else:
+            self._render_process_client.render(0, self.streaming_mode)
 
     def dbg_shader(self, fragment_shader: str):
         """
