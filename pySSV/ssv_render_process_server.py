@@ -19,6 +19,10 @@ from .ssv_logging import log
 
 
 class SSVRenderProcessLogger(io.StringIO):
+    """
+    A StringIO pipe for sending log messages to, this class pipes incoming messages to "LogM" commands.
+    """
+
     def __init__(self, tx_queue: Queue):
         super().__init__()
         self.tx_queue = tx_queue

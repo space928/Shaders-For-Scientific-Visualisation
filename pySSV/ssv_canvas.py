@@ -13,6 +13,7 @@ class SSVCanvas:
     def __init__(self, size, backend="opengl", standalone=False, target_framerate=60):
         """
         Creates a new SSV Canvas object which manages the graphics context and render widget/window.
+
         :param size: the default resolution of the renderer as a tuple: ``(width: int, height: int)``
         :param backend: the rendering backend to use; currently supports: ``"opengl"``
         :param standalone: whether the canvas should run standalone, or attempt to create a Jupyter Widget for
@@ -55,6 +56,7 @@ class SSVCanvas:
     def run(self, stream_mode="jpg", stream_quality=None, never_kill=False) -> None:
         """
         Starts the render loop and displays the Jupyter Widget (or render window if in standalone mode).
+
         :param stream_mode: the encoding format to use to transmit rendered frames from the render process to the
                             Jupyter widget. (Currently supports: `jpg`, `png`).
         :param stream_quality: the encoding quality to use for the given encoding format. (For advanced users only)
@@ -82,6 +84,7 @@ class SSVCanvas:
     def stop(self, force=False) -> None:
         """
         Stops the current canvas from rendering continuously. The renderer is not released and can be restarted.
+
         :param force: kills the render process and releases resources. SSVCanvases cannot be restarted if they have
                       been force stopped.
         """
@@ -96,7 +99,6 @@ class SSVCanvas:
         Note that most ShaderToy uniforms are not yet implemented.
 
         :param fragment_shader: the GLSL source of the shader to render.
-        :return:
         """
         self._render_process_client.register_shader(0, vertex_shader="""
         #version 330
@@ -132,7 +134,6 @@ class SSVCanvas:
     def dbg_render_test(self):
         """
         Sets up the render pipeline to render a demo shader.
-        :return:
         """
         self._render_process_client.dbg_render_test()
 
@@ -143,3 +144,11 @@ class SSVCanvas:
         :param full: whether to log *all* of the OpenGL context information (including extensions).
         """
         self._render_process_client.dbg_log_context_info(full)
+
+    def dbg_log_frame_times(self, enabled=True):
+        """
+        Enables or disables frame time logging.
+
+        :param enabled: whether to log frame times.
+        """
+        self._render_process_client.dbg_log_frame_times(enabled)

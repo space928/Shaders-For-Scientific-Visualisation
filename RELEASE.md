@@ -44,7 +44,7 @@ python -m build
 Then to upload the package to PyPI, do:
 
 ```bash
-twine upload dist/*
+twine upload dist/pyssv*
 ```
 
 ### NPM package
@@ -52,6 +52,9 @@ twine upload dist/*
 To publish the frontend part of the extension as a NPM package, do:
 
 ```bash
+# NPM doesn't seem to like the older version of yarn that jlpm uses, so run yarn install to update the lockfile (don't commit this version of the lock file though).
+yarn install
+
 npm login
 npm publish --access public
 ```

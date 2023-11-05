@@ -70,8 +70,10 @@ pip install -e ".[test, examples]"
 ```
 
 The `jlpm` command is JupyterLab's pinned version of
-[yarn](https://yarnpkg.com/) that is installed with JupyterLab. You may use
-`yarn` or `npm` in lieu of `jlpm` below.
+[yarn](https://yarnpkg.com/) that is installed with JupyterLab. You may use `yarn` or `npm` 
+in lieu of `jlpm` below. Using `jlpm` and `yarn` sometimes breaks the package cache
+if this happens, just delete the `yarn.lock` file and the `.yarn` folder and rerun 
+`jlpm install`.
 
 When developing your extensions, you need to manually enable your extensions with the
 notebook / lab frontend. For lab, this is done by the command:

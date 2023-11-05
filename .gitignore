@@ -8,6 +8,7 @@ node_modules/
 .ipynb_checkpoints
 *.tsbuildinfo
 pySSV/labextension
+pySSV/nbextension
 # Version file is handled by hatchling
 pySSV/_version.py
 # Docs

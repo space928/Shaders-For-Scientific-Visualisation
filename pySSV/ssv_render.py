@@ -63,7 +63,6 @@ class SSVRender(ABC):
         :param buffer_id: the id of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param size: the new resolution of the framebuffer.
         :param pixel_format: the new pixel format of the framebuffer.
-        :return:
         """
         ...
 
@@ -73,7 +72,6 @@ class SSVRender(ABC):
         Destroys the given framebuffer. *Note* that framebuffer 0 can't be destroyed as it is the output framebuffer.
 
         :param buffer_id: the id of the framebuffer to destroy.
-        :return:
         """
         ...
 
@@ -85,7 +83,6 @@ class SSVRender(ABC):
         :param buffer_id: the id of the program of the uniform to update. Set to -1 to update across all buffers.
         :param uniform_name: the name of the shader uniform to update.
         :param value: the new value of the shader uniform. (Must be convertible to GLSL type)
-        :return:
         """
         ...
 
@@ -96,7 +93,6 @@ class SSVRender(ABC):
 
         :param buffer_id: the buffer_id of the vertex array to update.
         :param array: a numpy array containing the new vertex data.
-        :return:
         """
         ...
 
@@ -114,6 +110,5 @@ class SSVRender(ABC):
         :param tess_evaluation_shader: the preprocessed tessellation evaluation shader GLSL source.
         :param geometry_shader: the preprocessed geometry shader GLSL source.
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
-        :return:
         """
         ...
