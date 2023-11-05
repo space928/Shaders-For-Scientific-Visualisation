@@ -7,6 +7,7 @@
 [![Build](https://github.com/space928/Shaders-For-Scientific-Visualisation/actions/workflows/build.yml/badge.svg)](https://github.com/space928/Shaders-For-Scientific-Visualisation/actions/workflows/build.yml)
 [![PyPI - Version](https://img.shields.io/pypi/v/pySSV)](https://pypi.org/project/pySSV/)
 [![Documentation Status](https://readthedocs.org/projects/pyssv/badge/?version=latest)](https://pyssv.readthedocs.io/en/latest/?badge=latest)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/space928/Shaders-For-Scientific-Visualisation/blob/main/examples/introduction.ipynb)
 
 A python library for advanced interactive data visualisation on the GPU. This project is being developed for my Level 4
 Individual Project at the University of Glasgow for my Computing Science degree.
