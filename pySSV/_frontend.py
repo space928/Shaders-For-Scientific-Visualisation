@@ -9,5 +9,10 @@
 Information about the frontend package of the widgets.
 """
 
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "dev"
+
 module_name = "py-ssv"
-module_version = "^0.1.0"
+module_version = f"^{__version__}"
