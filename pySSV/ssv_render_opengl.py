@@ -57,6 +57,7 @@ class SSVRenderOpenGL(SSVRender):
     def log_context_info(self, full=False):
         """
         Logs the OpenGL information to the console for debugging.
+
         :param full: whether to log *all* of the OpenGL context information (including extensions)
         """
         log(f"Got OpenGL context:\n"

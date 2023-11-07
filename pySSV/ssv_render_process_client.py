@@ -76,33 +76,33 @@ class SSVRenderProcessClient:
 
     def subscribe_on_render(self, observer: OnRenderObserverDelegate):
         """
+        Subscribes an event handler to the on_render event, triggered after each frame is rendered.
 
-        :param observer:
-        :return:
+        :param observer: a function to handle the event (must have the signature: `callback(data: bytes) -> None`).
         """
         self._on_render_observers.append(observer)
 
     def unsubscribe_on_render(self, observer: OnRenderObserverDelegate):
         """
+        Unsubscribes an event handler from the on_render event.
 
-        :param observer:
-        :return:
+        :param observer: a function currently registered to handle the event.
         """
         self._on_render_observers.remove(observer)
 
     def subscribe_on_log(self, observer: OnRenderObserverDelegate):
         """
+        Subscribes an event handler to the on_log event, triggered when the render process logs a message.
 
-        :param observer:
-        :return:
+        :param observer: a function to handle the event (must have the signature: `callback(data: bytes) -> None`).
         """
         self._on_log_observers.append(observer)
 
     def unsubscribe_on_log(self, observer: OnRenderObserverDelegate):
         """
+        Unsubscribes an event handler from the on_log event.
 
-        :param observer:
-        :return:
+        :param observer: a function currently registered to handle the event.
         """
         self._on_log_observers.remove(observer)
 
@@ -114,7 +114,6 @@ class SSVRenderProcessClient:
         :param buffer_id: the id of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param size: the new resolution of the framebuffer.
         :param pixel_format: the new pixel format of the framebuffer.
-        :return:
         """
         self._command_queue_tx.put(("UFBO", buffer_id, size, pixel_format))
 
@@ -123,7 +122,6 @@ class SSVRenderProcessClient:
         Destroys the given framebuffer. *Note* that framebuffer 0 can't be destroyed as it is the output framebuffer.
 
         :param buffer_id: the id of the framebuffer to destroy.
-        :return:
         """
         self._command_queue_tx.put(("DFBO", buffer_id))
 
@@ -135,23 +133,18 @@ class SSVRenderProcessClient:
         :param stream_mode: the streaming format to use to send the frames to the widget.
         :param encode_quality: the quality value for the stream encoder. When using jpg, setting to 100 disables
                                compression; when using png, setting to 0 disables compression.
-        :return:
         """
         self._command_queue_tx.put(("Rndr", target_framerate, stream_mode, encode_quality))
 
     def stop(self):
         """
         Kills the render process.
-
-        :return:
         """
         self._command_queue_tx.put(("Stop", ))
 
     def send_heartbeat(self):
         """
         Sends a heartbeat to the render process to keep it alive.
-
-        :return:
         """
         self._command_queue_tx.put(("HrtB",))
 
@@ -161,7 +154,6 @@ class SSVRenderProcessClient:
         Set to None to disable the watchdog.
 
         :param time: timeout in seconds.
-        :return:
         """
         self._command_queue_tx.put(("SWdg", time))
 
@@ -172,7 +164,6 @@ class SSVRenderProcessClient:
         :param buffer_id: the id of the program of the uniform to update. Set to -1 to update across all buffers.
         :param uniform_name: the name of the shader uniform to update.
         :param value: the new value of the shader uniform. (Must be convertible to GLSL type)
-        :return:
         """
         self._command_queue_tx.put(("UpdU", buffer_id, uniform_name, value))
 
@@ -182,7 +173,6 @@ class SSVRenderProcessClient:
 
         :param buffer_id: the buffer_id of the vertex array to update.
         :param array: a numpy array containing the new vertex data.
-        :return:
         """
         self._command_queue_tx.put(("UpdV", buffer_id, array))
 
@@ -199,7 +189,6 @@ class SSVRenderProcessClient:
         :param tess_evaluation_shader: the preprocessed tessellation evaluation shader GLSL source.
         :param geometry_shader: the preprocessed geometry shader GLSL source.
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
-        :return:
         """
         self._command_queue_tx.put(("RegS", buffer_id, vertex_shader, fragment_shader, tess_control_shader,
                                     tess_evaluation_shader, geometry_shader, compute_shader))
@@ -223,8 +212,6 @@ class SSVRenderProcessClient:
     def dbg_render_test(self):
         """
         *[For debugging only]* Sets up the pipeline to render with a demo shader.
-
-        :return:
         """
         self._command_queue_tx.put(("DbRT",))
 
@@ -234,6 +221,5 @@ class SSVRenderProcessClient:
 
         :param command: the custom command to send
         :param args: the arguments to send with the command
-        :return:
         """
         self._command_queue_tx.put((command, *args))
