@@ -30,7 +30,8 @@ dependencies = [
     "numpy>=1.24.0; python_version=='3.11'",
     "numpy>=1.26.0; python_version=='3.12'",
     "moderngl>=5.8.2",
-    "Pillow>=10.1.0"
+    "Pillow>=10.1.0",
+    "pcpp==1.30"
 ]
 dynamic = ["version", "description", "authors", "urls", "keywords"]
 
