@@ -24,10 +24,12 @@ Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: Installation and usage
+   :caption: Installation and Usage
 
    installing
    introduction
+   built-in-shader-templates
+   writing-shader-templates
 
 .. toctree::
    :maxdepth: 1

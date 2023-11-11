@@ -60,8 +60,8 @@ class SSVRenderProcessClient:
             elif command == "LogM":
                 # Log message
                 for observer in self._on_log_observers:
-                    observer(command_args[0])
-                log(command_args[0], raw=True, severity=logging.INFO)
+                    observer(command_args[1])
+                log(command_args[1], raw=True, severity=command_args[0])
             elif command == "Stop":
                 # Render server stopping
                 log("Render server shut down.", severity=logging.INFO)

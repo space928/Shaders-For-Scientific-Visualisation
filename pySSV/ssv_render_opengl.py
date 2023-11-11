@@ -113,8 +113,8 @@ class SSVRenderOpenGL(SSVRender):
         # TODO: Custom vertex buffers
         if array is None:
             vertex_buff = self.ctx.buffer(self._default_vertices)
-            self._vertex_buffers[buffer_id] = self.ctx.simple_vertex_array(self._programs[buffer_id], vertex_buff,
-                                                                           'in_vert', 'in_color')
+            self._vertex_buffers[buffer_id] = self.ctx.vertex_array(self._programs[buffer_id], vertex_buff,
+                                                                    'in_vert', 'in_color')
         else:
             raise NotImplementedError()
 
@@ -162,8 +162,8 @@ class SSVRenderOpenGL(SSVRender):
         in vec3 color;
         in vec2 position;
 
-        uniform vec2 iResolution;
-        uniform float iTime;
+        uniform vec4 uResolution;
+        uniform float uTime;
 
         float amod(float x, float y)
         {
@@ -173,9 +173,9 @@ class SSVRenderOpenGL(SSVRender):
         vec4 mainImage(in vec2 fragCoord)
         {
             // Normalized pixel coordinates (from 0 to 1)
-            vec2 uv = fragCoord/iResolution.xy;
+            vec2 uv = fragCoord/uResolution.xy;
 
-            float coord = floor(fragCoord.x) + floor(fragCoord.y/10.) + (iTime*60.);
+            float coord = floor(fragCoord.x) + floor(fragCoord.y/10.) + (uTime*60.);
             //vec3 col = vec3(amod(coord, 16.)>=8.?1.:0., amod(coord, 32.)>=16.?1.:0., amod(coord, 64.)>=32.?1.:0.);
             //col = amod(coord, 128.)>64.?(col*0.3333+.3333):col;
 
@@ -190,19 +190,26 @@ class SSVRenderOpenGL(SSVRender):
         }
 
         void main() {
-            fragColor = mainImage(position * iResolution) + vec4(color, 1.0)*0.01;
+            fragColor = mainImage(position * uResolution.xy) + vec4(color, 1.0)*0.01;
             //fragColor = vec4(color, 1.0);
         }
         """)
 
         # Set uniforms
-        self._programs[0]["iResolution"].value = self._frame_buffers[0].size
-        self._programs[0]["iTime"].value = time.time() - self._start_time
+        self._programs[0]["uResolution"].value = (*self._frame_buffers[0].size, 0, 0)
+        self._programs[0]["uTime"].value = time.time() - self._start_time
 
         # Assign buffers and render
         vert_buff = self.ctx.buffer(vertices)
         self._vertex_buffers[0] = self.ctx.simple_vertex_array(self._programs[0], vert_buff,
                                                                'in_vert', 'in_color')
+
+    def _update_built_in_uniforms(self, buffer_id: int):
+        if "uTime" in self._programs[buffer_id]:
+            self._programs[buffer_id]["uTime"].value = time.time() - self._start_time
+        if "uResolution" in self._programs[buffer_id]:
+            res = self._frame_buffers[buffer_id].size
+            self._programs[buffer_id]["uResolution"].value = (*res, 0, 0)
 
     def render(self):
         if 0 not in self._vertex_buffers:
@@ -210,8 +217,7 @@ class SSVRenderOpenGL(SSVRender):
                 severity=logging.ERROR)
             return False
 
-        if "iTime" in self._programs[0]:
-            self._programs[0]["iTime"].value = time.time() - self._start_time
+        self._update_built_in_uniforms(0)
 
         self._frame_buffers[0].use()
         self.ctx.clear()
