@@ -1,5 +1,5 @@
 
-.. built-in-shader-templates:
+.. _built-in-shader-templates:
 
 =========================
 Built In Shader Templates
