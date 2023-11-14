@@ -121,8 +121,35 @@ class SSVCanvas:
         # done in the future though.
         self._render_process_client.update_vertex_buffer(buffer_id, None)
 
+    def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
+                                  additional_templates=None) -> str:
+        """
+        Gets the list of arguments a given shader template expects and returns a string containing their usage info.
+
+        :param shader_template_name: the name of the template to look for.
+        :param additional_template_directory: a path to a directory containing custom shader templates.
+        :param additional_templates: a list of custom shader templates (source code, not paths).
+        :return: the shader template's auto generated help string.
+        """
+        return self._preprocessor.dbg_query_shader_template(shader_template_name, additional_template_directory,
+                                                            additional_templates)
+
+    def dbg_query_shader_templates(self, additional_template_directory: Optional[str] = None) -> str:
+        """
+        Gets a list of all the shader templates available to the preprocessor.
+
+        :param additional_template_directory: a path to a directory containing custom shader templates.
+        :return: A string of all the shader templates which were found.
+        """
+        metadata = self._preprocessor.dbg_query_shader_templates(additional_template_directory)
+        shaders = "\n\n".join([f"\t'{shader.name}'\n"
+                               f"\t\tAuthor: {' '.join(shader.author) if shader.author else ''}\n"
+                               f"\t\tDescription: {' '.join(shader.description) if shader.description else ''}"
+                               for shader in metadata])
+        return f"Found shader templates: \n\n{shaders}"
+
     def dbg_preprocess_shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
-                              additional_templates=None):
+                              additional_templates=None) -> dict[str, str]:
         """
         Runs the preprocessor on a shader and returns the results. Useful for debugging shaders.
 

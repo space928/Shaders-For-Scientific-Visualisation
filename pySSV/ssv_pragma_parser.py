@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 import logging
 import sys
-from typing import Optional
+from typing import Union
 
 import pcpp
 import argparse
@@ -14,15 +14,18 @@ class SSVTemplatePragmaData(argparse.Namespace):
     command: str = None
     # Define/Arg
     name: str = None
+    author: str = None
+    description: Union[str, list[str]] = None
     # Stage
     shader_stage: list[str] = None
     # Arg
+    # name: str = None
     non_positional: bool = False
     action: str = None
     default: str = None
     choices: list[str] = None
     const: str = None
-    description: list[str] = None
+    # description: list[str] = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -48,8 +51,14 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         # Template pragma parser
         self._pragma_parse = argparse.ArgumentParser(prog="SSV Shader Preprocessor")
         sub_parsers = self._pragma_parse.add_subparsers(dest="command")
-        pixel_parser = sub_parsers.add_parser("define", help="Defines a new SSV shader template")
-        pixel_parser.add_argument("name", type=str)
+        define_parser = sub_parsers.add_parser("define", help="Defines a new SSV shader template")
+        define_parser.add_argument("name", type=str,
+                                   help="The name the shader template. The template's filename should be in the form: "
+                                        "'template_<name>.glsl'.")
+        define_parser.add_argument("--author", "-a", type=str, nargs="+",
+                                   help="The shader template's author.")
+        define_parser.add_argument("--description", "-d", type=str, nargs="+",
+                                   help="A brief description of the shader template and what it does.")
         stage_parser = sub_parsers.add_parser("stage",
                                               help="Specifies a shader stage to compile this template for")
         stage_parser.add_argument("shader_stage",
@@ -73,7 +82,7 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
                                 help="What to do when this argument is encountered. See the argparse docs for details "
                                      "on the different actions: "
                                      "https://docs.python.org/3.11/library/argparse.html#action")
-        arg_parser.add_argument("--default", type=str,
+        arg_parser.add_argument("--default", type=str, nargs="+",
                                 help="The default value for this argument if it isn't specified")
         arg_parser.add_argument("--choices", "-c", type=str, nargs="+", action="extend",
                                 help="Limits the valid values of this argument to those specified here")
@@ -119,14 +128,14 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
 
         return True
 
-    def parse(self, input, source=None, ignore=None) -> list[SSVTemplatePragmaData]:
+    def parse(self, input, source=None, ignore=None) -> dict[str, list[SSVTemplatePragmaData]]:
         """
         Parses the #pragma directives of a shader template.
 
         :param input: the source of the shader template.
         :param source: the path to the source file.
         :param ignore:
-        :return: a list of parsed shader template commands.
+        :return: a dictionary of parsed shader template commands.
         """
         if ignore is None:
             ignore = {}
@@ -140,8 +149,18 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         while self.token():
             pass
 
-        return [self._pragma_parse.parse_args(args.split(), namespace=SSVTemplatePragmaData())
+        args = [self._pragma_parse.parse_args(args.split(), namespace=SSVTemplatePragmaData())
                 for args in self._pragma_args]
+
+        # Group arguments into a dictionary
+        args_dict = {}
+        for arg in args:
+            if arg.command in args_dict:
+                args_dict[arg.command].append(arg)
+            else:
+                args_dict[arg.command] = [arg]
+
+        return args_dict
 
     def write(self, oh=sys.stdout):
         """
@@ -160,7 +179,7 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
     def __init__(self):
         super(SSVShaderPragmaParser, self).__init__()
         # Template pragma parser
-        self._pragma_parse = argparse.ArgumentParser(prog="SSV Shader Preprocessor")
+        self._pragma_parse = argparse.ArgumentParser(prog="SSV Shader Preprocessor", prefix_chars="`")
         self._pragma_parse.add_argument("template", type=str)
         self._pragma_parse.add_argument("args", type=str, nargs="*")
 

@@ -69,10 +69,10 @@ def test_ssv_template_pragma_parser():
 
     # print(template_info)
 
-    define = template_info[0]
-    stage1 = template_info[1]
-    stage2 = template_info[2]
-    arg = template_info[3]
+    define = template_info["define"][0]
+    stage1 = template_info["stage"][0]
+    stage2 = template_info["stage"][1]
+    arg = template_info["arg"][0]
     assert define.command == "define"
     assert define.name == "test_shadertoy"
     assert stage1.command == "stage"

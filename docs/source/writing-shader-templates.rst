@@ -116,6 +116,16 @@ This directive is used to define a shader template and any metadata associated w
     The name of the shader template.
 
 
+.. option:: --author
+
+    The shader template's author.
+
+
+.. option:: --description
+
+    A brief description of the shader template and what it does.
+
+
 Stage Directive
 ^^^^^^^^^^^^^^^
 

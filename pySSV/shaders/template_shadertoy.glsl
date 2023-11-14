@@ -1,6 +1,7 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
-#pragma SSVTemplate define shadertoy
+#pragma SSVTemplate define shadertoy --author Thomas Mathieson \
+        --description A simple full screen pixel shader with compatibility for Shadertoy shaders.
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage fragment
 // Arguments get converted into compiler defines by the preprocessor
