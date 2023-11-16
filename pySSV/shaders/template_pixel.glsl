@@ -1,9 +1,9 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
-#pragma SSVTemplate define pixel --author Thomas Mathieson --description A simple full screen pixel shader.
+#pragma SSVTemplate define pixel --author "Thomas Mathieson" --description "A simple full screen pixel shader."
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage fragment
-#pragma SSVTemplate arg entrypoint -d The name of the entrypoint function to the shader.
+#pragma SSVTemplate arg entrypoint -d "The name of the entrypoint function to the shader."
 
 // Include any default includes we think the user might want
 #include "compat.glsl"

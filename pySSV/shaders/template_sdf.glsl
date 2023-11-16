@@ -1,18 +1,18 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
-#pragma SSVTemplate define sdf --author Thomas Mathieson \
-        --description A shader template which allows you to render custom signed distance functions.
+#pragma SSVTemplate define sdf --author "Thomas Mathieson" \
+        --description "A shader template which allows you to render custom signed distance functions."
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage fragment
-#pragma SSVTemplate arg entrypoint -d The name of the sdf function in the shader.
-#pragma SSVTemplate arg _camera_distance --default 10.0 -d The distance of the camera from the centre of the distance field.
-#pragma SSVTemplate arg _rotate_speed --default 0.1 -d The orbit speed of the camera around the SDF, in radians/second.
+#pragma SSVTemplate arg entrypoint -d "The name of the sdf function in the shader."
+#pragma SSVTemplate arg _camera_distance --default 10.0 -d "The distance of the camera from the centre of the distance field."
+#pragma SSVTemplate arg _rotate_speed --default 0.1 -d "The orbit speed of the camera around the SDF, in radians/second."
 #pragma SSVTemplate arg _raymarch_steps --default 128 \
-        -d The number of raymarching steps to use when rendering, turn this up if the edges of surfaces look soft.
-#pragma SSVTemplate arg _raymarch_distance --default 32. -d The maximum distance to raymarch.
-#pragma SSVTemplate arg _light_dir --default normalize(vec3(0.5,0.5,-0.9)) -d The maximum distance to raymarch.
+        -d "The number of raymarching steps to use when rendering, turn this up if the edges of surfaces look soft."
+#pragma SSVTemplate arg _raymarch_distance --default 32. -d "The maximum distance to raymarch."
+#pragma SSVTemplate arg _light_dir --default "normalize(vec3(0.5, 0.5, -0.9))" -d "The maximum distance to raymarch."
 #pragma SSVTemplate arg _render_mode --choices SOLID DEPTH XRAY ISOLINES --default SOLID \
-        -d How the distance field should be rendered. Check the documentation for more information about each mode.
+        -d "How the distance field should be rendered. Check the documentation for more information about each mode."
 
 // Include any default includes we think the user might want
 #include "compat.glsl"

@@ -13,7 +13,7 @@ test_template = """
 // an argument's name is transformed to match our naming convention:
 //    entrypoint -> T_ENTRYPOINT
 //    _varying_struct -> T_VARYING_STRUCT
-#pragma SSVTemplate arg entrypoint --default mainImage -d The name of the entrypoint function to the shader.
+#pragma SSVTemplate arg entrypoint --default mainImage -d "The name of the entrypoint function to the shader."
 // Prefixing an argument name with an underscore is shorthand for --non_positional
 // #pragma SSVTemplate arg _varying_struct --type str
 // An example for an SDF shader
@@ -86,7 +86,7 @@ def test_ssv_template_pragma_parser():
     assert arg.default == "mainImage"
     assert arg.choices is None
     assert arg.const is None
-    assert " ".join(arg.description) == "The name of the entrypoint function to the shader."
+    assert arg.description == "The name of the entrypoint function to the shader."
 
 
 def test_ssv_shader_pragma_parser():

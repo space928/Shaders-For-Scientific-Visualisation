@@ -19,7 +19,8 @@ class SSVShaderPreprocessor:
     to compile shaders for each pipeline stage.
     """
 
-    def __init__(self):
+    def __init__(self, gl_version: str):
+        self._gl_version = gl_version
         self._template_parser = SSVTemplatePragmaParser()
         self._shader_parser = SSVShaderPragmaParser()
 
@@ -32,9 +33,9 @@ class SSVShaderPreprocessor:
             if arg.name is not None:
                 template_name = arg.name
             if arg.author is not None:
-                template_author = ' '.join(arg.author)
+                template_author = arg.author
             if arg.description is not None:
-                template_description = ' '.join(arg.description)
+                template_description = arg.description
             break
 
         parser = argparse.ArgumentParser(f"#pragma SSV {template_name}",
@@ -68,17 +69,16 @@ class SSVShaderPreprocessor:
                 params["choices"] = arg.choices
             if arg.default is not None:
                 params["default"] = arg.default
-            if arg.description is not None and len(arg.description) > 0:
-                params["help"] = " ".join(arg.description)
-            if non_positional:
-                params["nargs"] = "+"
+            if arg.description is not None:
+                params["help"] = arg.description
+            # if non_positional:
+            #     params["nargs"] = "+"
 
             parser.add_argument(*arg_name, **params)
 
         return parser
 
-    @staticmethod
-    def _make_defines(template_args: argparse.Namespace) -> list[tuple[str, str]]:
+    def _make_defines(self, template_args: argparse.Namespace) -> list[tuple[str, str]]:
         """
         Converts templates arguments from an argparse namespace to a list of tuples::
 
@@ -105,7 +105,7 @@ class SSVShaderPreprocessor:
             defines.append((name, val))
 
         defines.append(("SSV_SHADER", "1"))
-        defines.append(("_GL_VERSION", "#version 420"))
+        defines.append(("_GL_VERSION", f"#version {self._gl_version}"))
 
         return defines
 

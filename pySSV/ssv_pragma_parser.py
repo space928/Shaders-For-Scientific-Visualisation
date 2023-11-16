@@ -8,6 +8,7 @@ import pcpp
 import argparse
 
 from .ssv_logging import log
+from .ssv_shader_args_tokenizer import SSVShaderArgsTokenizer
 
 
 class SSVTemplatePragmaData(argparse.Namespace):
@@ -15,7 +16,7 @@ class SSVTemplatePragmaData(argparse.Namespace):
     # Define/Arg
     name: str = None
     author: str = None
-    description: Union[str, list[str]] = None
+    description: str = None
     # Stage
     shader_stage: list[str] = None
     # Arg
@@ -55,9 +56,9 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         define_parser.add_argument("name", type=str,
                                    help="The name the shader template. The template's filename should be in the form: "
                                         "'template_<name>.glsl'.")
-        define_parser.add_argument("--author", "-a", type=str, nargs="+",
+        define_parser.add_argument("--author", "-a", type=str,
                                    help="The shader template's author.")
-        define_parser.add_argument("--description", "-d", type=str, nargs="+",
+        define_parser.add_argument("--description", "-d", type=str,
                                    help="A brief description of the shader template and what it does.")
         stage_parser = sub_parsers.add_parser("stage",
                                               help="Specifies a shader stage to compile this template for")
@@ -82,15 +83,13 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
                                 help="What to do when this argument is encountered. See the argparse docs for details "
                                      "on the different actions: "
                                      "https://docs.python.org/3.11/library/argparse.html#action")
-        arg_parser.add_argument("--default", type=str, nargs="+",
+        arg_parser.add_argument("--default", type=str,
                                 help="The default value for this argument if it isn't specified")
         arg_parser.add_argument("--choices", "-c", type=str, nargs="+", action="extend",
                                 help="Limits the valid values of this argument to those specified here")
         arg_parser.add_argument("--const", type=str,
                                 help="When using the 'store_const' action, specifies what value to store")
-        # TODO: A bit of a hack for now, the parser currently splits the description into a list of words. This also
-        #  disallows the use of dashes in descriptions...
-        arg_parser.add_argument("--description", "-d", nargs="+",
+        arg_parser.add_argument("--description", "-d",
                                 help="A brief description of the argument and the value it expects. Note that for "
                                      "implementation reasons the description can't contain dashes.")
 
@@ -119,9 +118,8 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         if toks[0].value == "SSV":
             ...
         elif toks[0].value == "SSVTemplate":
-            tok_strs = [t.value for t in toks[2:]]
-            # log(f"Found SSV pragma: {''.join(tok_strs)}")
-            self._pragma_args.append(''.join(tok_strs))
+            # print(f"Found SSV pragma: {SSVShaderArgsTokenizer.correct_tokens(toks[2:], self)}")
+            self._pragma_args.append(SSVShaderArgsTokenizer.correct_tokens(toks[2:], self))
         else:
             log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join(toks)}",
                 severity=logging.ERROR)
@@ -149,7 +147,7 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         while self.token():
             pass
 
-        args = [self._pragma_parse.parse_args(args.split(), namespace=SSVTemplatePragmaData())
+        args = [self._pragma_parse.parse_args(args, namespace=SSVTemplatePragmaData())
                 for args in self._pragma_args]
 
         # Group arguments into a dictionary
@@ -193,11 +191,10 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             return super(SSVShaderPragmaParser, self).on_directive_unknown(directive, toks, ifpassthru, precedingtoks)
 
         if toks[0].value == "SSV":
-            tok_strs = [t.value for t in toks[2:]]
             # log(f"Found SSV pragma: {''.join(tok_strs)}")
             if self._pragma_args is not None:
                 raise ValueError("Shader contains multiple shader template pragma directives! Only one is allowed.")
-            self._pragma_args = ''.join(tok_strs)
+            self._pragma_args = SSVShaderArgsTokenizer.correct_tokens(toks[2:], self)
         elif toks[0].value == "SSVTemplate":
             ...
         else:
@@ -231,7 +228,7 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             raise ValueError(
                 "Shader does not use a shader template! Did you remember to add #pragma SSV [...] to your shader?")
 
-        return self._pragma_parse.parse_args(self._pragma_args.split(), namespace=SSVShaderPragmaData())
+        return self._pragma_parse.parse_args(self._pragma_args, namespace=SSVShaderPragmaData())
 
     def write(self, oh=sys.stdout):
         """

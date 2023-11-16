@@ -36,7 +36,7 @@ class SSVCanvas:
             self.widget.on_heartbeat(self.__on_heartbeat)
             # set_output_stream(sys.stdout)
         self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 1)
-        self._preprocessor = SSVShaderPreprocessor()
+        self._preprocessor = SSVShaderPreprocessor(gl_version="420")
 
         self._mouse_pos = [0, 0]
 
@@ -143,8 +143,8 @@ class SSVCanvas:
         """
         metadata = self._preprocessor.dbg_query_shader_templates(additional_template_directory)
         shaders = "\n\n".join([f"\t'{shader.name}'\n"
-                               f"\t\tAuthor: {' '.join(shader.author) if shader.author else ''}\n"
-                               f"\t\tDescription: {' '.join(shader.description) if shader.description else ''}"
+                               f"\t\tAuthor: {shader.author if shader.author else ''}\n"
+                               f"\t\tDescription: {shader.description if shader.description else ''}"
                                for shader in metadata])
         return f"Found shader templates: \n\n{shaders}"
 

@@ -1,10 +1,10 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
-#pragma SSVTemplate define vert --author Thomas Mathieson \
-        --description A minimal shader template to render vertices with their vertex colours.
+#pragma SSVTemplate define vert --author "Thomas Mathieson" \
+        --description "A minimal shader template to render vertices with their vertex colours."
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage fragment
-#pragma SSVTemplate arg entrypoint -d The name of the entrypoint function to the shader.
+#pragma SSVTemplate arg entrypoint -d "The name of the entrypoint function to the shader."
 
 // Include any default includes we think the user might want
 #include "compat.glsl"

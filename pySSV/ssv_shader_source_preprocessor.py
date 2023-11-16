@@ -11,7 +11,8 @@ from .ssv_logging import log
 
 class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     """
-
+    This class is responsible for the actual preprocessing of the shader template. It extends the ``pcpp.Preprocessor``
+    to add functionality needed to support our custom #include and #pragma directives.
     """
 
     def __init__(self, shader_source):
@@ -64,7 +65,7 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def token(self):
         tok = super().token()
 
-        # Macro expansion happens when the chunk is collapsed so it should be a good time to re-enable #line
+        # Macro expansion happens when the chunk is collapsed, so it should be a good time to re-enable #line
         # directives if needed.
         if -1 < self.will_enable_line_directive <= tok.lineno:
             self.line_directive = "#line"

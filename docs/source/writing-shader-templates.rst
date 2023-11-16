@@ -37,34 +37,31 @@ In this example the ``shadertoy`` shader template looks like this:
 
 .. code-block:: glsl
 
-    #pragma SSVTemplate define shadertoy
+    #pragma SSVTemplate define shadertoy --author "Thomas Mathieson" \
+            --description "A simple full screen pixel shader with compatibility for Shadertoy shaders."
     #pragma SSVTemplate stage vertex
     #pragma SSVTemplate stage fragment
     // Arguments get converted into compiler defines by the preprocessor
     // an argument's name is transformed to match our naming convention:
     //    entrypoint -> T_ENTRYPOINT
     //    _varying_struct -> T_VARYING_STRUCT
-    #pragma SSVTemplate arg entrypoint
+    #pragma SSVTemplate arg entrypoint --default mainImage -d "The name of the entrypoint function to the shader."
     // Prefixing an argument name with an underscore is shorthand for --non_positional
     // #pragma SSVTemplate arg _varying_struct --type str
     // An example for an SDF shader
     // #pragma SSVTemplate arg _render_mode --choices solid xray isolines 2d
 
-    #ifdef _GL_VERSION
-    #version _GL_VERSION
-    // For some compilers you need to specify the OpenGL version to target as the first line of the shader.
-    #endif // _GL_VERSION
-    #ifdef _GL_PRECISION
-    // In OpenGL ES you need to specify the precision of variables, you can do this per-variable or specify a default.
-    // https://stackoverflow.com/a/6336285
-    precision highp float;
-    #endif // _GL_PRECISION
-
     #define SHADERTOY_COMPAT
     // Include any default includes we think the user might want
+    // compat.glsl automatically declares the #version and precision directives when needed, it should always be the
+    // first file to be included in the template.
+    #include "compat.glsl"
+    // global_uniforms.glsl contains the declarations for all uniforms which are automatically passed in by pySSV
     #include "global_uniforms.glsl"
 
 
+    // Use these preprocessor blocks to specify what code to compile for each shader stage.
+    // These macros (SHADER_STAGE_<stage_name>) are defined automatically by the preprocessor.
     #ifdef SHADER_STAGE_VERTEX
     in vec2 in_vert;
     in vec3 in_color;
@@ -83,10 +80,13 @@ In this example the ``shadertoy`` shader template looks like this:
     in vec3 color;
     in vec2 position;
 
+    // Including the magic string "TEMPLATE_DATA" causes the user's shader code to be injected here.
     #include "TEMPLATE_DATA"
 
     void main() {
         // Not using the color attribute causes the compiler to strip it and confuses modernGL.
+        // T_ENTRYPOINT is a macro that was defined automatically when the argument defined
+        // by '#pragma SSVTemplate arg entrypoint' was passed in.
         fragColor = T_ENTRYPOINT(position * iResolution) + vec4(color, 1.0)*1e-6;
     }
     #endif //SHADER_STAGE_FRAGMENT
@@ -95,7 +95,18 @@ When preprocessing the template the arguments passed in to the ``#pragma SSV <te
 to preprocessor defines. Argument names are converted to uppercase and prefixed with ``T_``, so the argument
 ``entrypoint`` is passed in to the shader template as ``#define T_ENTRYPOINT <value>``. The glsl source passed in by
 the user to the template is injected in the shader template using the special ``#include "TEMPLATE_DATA"`` directive
-which simply expands to the user's glsl code when preprocessed.
+which simply expands to the user's glsl code when preprocessed. Arguments are passed in to the shader as defines
+exactly as they are specified by the user::
+
+    // If the user specifies these arguments
+    #pragma SSV sdf sdf_main --camera_speed -1.5 --light_dir "normalize(vec3(0.1, 0.2, 0.3))"
+
+    // They will be defined by the preprocessor as
+    #define T_ENTRYPOINT sdf_main
+    #define T_CAMERA_SPEED -1.5
+    // Notice in this case that to specify a value which contains whitespace, it must be wrapped in quotation marks.
+    // A few basic c++ style escape sequences are supported in this case as well (\", \n, \t).
+    #define T_LIGHT_DIR normalize(vec3(0.1, 0.2, 0.3))
 
 ``SSVTemplate`` Directives
 --------------------------
@@ -113,7 +124,8 @@ This directive is used to define a shader template and any metadata associated w
 
 .. option:: name
 
-    The name of the shader template.
+    The name of the shader template. This should only consist of characters valid in filenames and should not contain
+    spaces.
 
 
 .. option:: --author
