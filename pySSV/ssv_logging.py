@@ -1,8 +1,10 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-
+import sys
+from abc import abstractmethod
+import io
 import logging
-import typing
+from typing import Union, TextIO
 
 
 # This module provides a basic wrapper around the python logging module, to standardise the logging format and make
@@ -19,12 +21,52 @@ class SSVFormatter(logging.Formatter):
             return logging.Formatter.format(self, record)
 
 
+class SSVLogStream(io.StringIO):
+    """
+    A StringIO pipe for sending log messages with a severity level.
+    """
+    @abstractmethod
+    def write(self, text: str, severity: int = logging.INFO) -> int:
+        """
+        Called to write a log message to the stream.
+
+        :param text: the message to log.
+        :param severity: the severity to log the message with.
+        :return: the number of characters written to the stream.
+        """
+        ...
+
+
+class SSVStreamHandler(logging.StreamHandler):
+    stream: Union[SSVLogStream, TextIO] = None
+
+    def __init__(self, stream=None):
+        super().__init__()
+        if stream is not None:
+            self.stream = stream
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Small modification of the build in StreamHandler to pass the log level to the stream
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            if issubclass(type(stream), SSVLogStream):
+                stream.write(msg + self.terminator, severity=record.levelno)
+            else:
+                stream.write(msg + self.terminator)
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+
 def make_formatter(prefix="pySSV"):
     return SSVFormatter(f"[{prefix}] [%(levelname)s] [%(module)s] [%(funcName)s] %(message)s")
 
 
-def set_output_stream(stream: typing.TextIO, level=logging.INFO, prefix="pySSV"):
-    handler = logging.StreamHandler(stream)
+def set_output_stream(stream: TextIO, level=logging.INFO, prefix="pySSV"):
+    handler = SSVStreamHandler(stream)
     handler.setFormatter(make_formatter(prefix))
     handler.setLevel(level)
     _ssv_logger.addHandler(handler)

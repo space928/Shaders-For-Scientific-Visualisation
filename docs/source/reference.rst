@@ -36,3 +36,15 @@ developers wanting to extend pySSV and power users.
 
 .. automodule:: pySSV.ssv_render_widget
     :members:
+
+
+.. automodule:: pySSV.ssv_shader_preprocessor
+    :members:
+
+
+.. automodule:: pySSV.ssv_shader_source_preprocessor
+    :members:
+
+
+.. automodule:: pySSV.ssv_pragma_parser
+    :members:

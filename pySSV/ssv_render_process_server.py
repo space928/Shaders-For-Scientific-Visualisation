@@ -15,20 +15,19 @@ from PIL import Image
 from .ssv_render import SSVRender
 from .ssv_render_opengl import SSVRenderOpenGL
 from . import ssv_logging
-from .ssv_logging import log
+from .ssv_logging import log, SSVLogStream
 
 
-class SSVRenderProcessLogger(io.StringIO):
+class SSVRenderProcessLogger(SSVLogStream):
     """
     A StringIO pipe for sending log messages to, this class pipes incoming messages to "LogM" commands.
     """
-
     def __init__(self, tx_queue: Queue):
         super().__init__()
         self.tx_queue = tx_queue
 
-    def write(self, text: str) -> int:
-        self.tx_queue.put(("LogM", text))
+    def write(self, text: str, severity: int = logging.INFO+1) -> int:
+        self.tx_queue.put(("LogM", severity, text))
         return len(text)  # super().write(text)
 
 

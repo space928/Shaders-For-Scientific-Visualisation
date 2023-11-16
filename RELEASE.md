@@ -52,7 +52,10 @@ twine upload dist/pyssv*
 To publish the frontend part of the extension as a NPM package, do:
 
 ```bash
-# NPM doesn't seem to like the older version of yarn that jlpm uses, so run yarn install to update the lockfile (don't commit this version of the lock file though).
+jlpm build:prod
+# (Workaround) NPM doesn't seem to like the older version of yarn that jlpm uses, so run yarn install to update the 
+# lockfile (don't commit this version of the lock file though). Make sure to revert your lockfile and reinstall with 
+# jlpm after this step.
 yarn install
 
 npm login

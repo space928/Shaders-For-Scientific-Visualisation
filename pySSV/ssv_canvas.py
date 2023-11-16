@@ -1,15 +1,18 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
+from typing import Optional
 
 from .ssv_render_process_client import SSVRenderProcessClient
 from .ssv_render_widget import SSVRenderWidget
-from .ssv_logging import log
+from .ssv_shader_preprocessor import SSVShaderPreprocessor
+from .ssv_logging import log, set_output_stream
 
 
 class SSVCanvas:
     """
     An SSV canvas manages the OpenGL rendering context, shaders, and the jupyter widget
     """
+
     def __init__(self, size, backend="opengl", standalone=False, target_framerate=60):
         """
         Creates a new SSV Canvas object which manages the graphics context and render widget/window.
@@ -31,7 +34,9 @@ class SSVCanvas:
             self.widget = SSVRenderWidget()
             self.widget.streaming_mode = self.streaming_mode
             self.widget.on_heartbeat(self.__on_heartbeat)
+            # set_output_stream(sys.stdout)
         self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 1)
+        self._preprocessor = SSVShaderPreprocessor(gl_version="420")
 
         self._mouse_pos = [0, 0]
 
@@ -47,13 +52,13 @@ class SSVCanvas:
 
     def __on_mouse_x_updated(self, x):
         self._mouse_pos[0] = x.new
-        self._render_process_client.update_uniform(-1, "iMouse", tuple(self._mouse_pos))
+        self._render_process_client.update_uniform(-1, "uMouse", tuple(self._mouse_pos))
 
     def __on_mouse_y_updated(self, y):
         self._mouse_pos[1] = y.new
-        self._render_process_client.update_uniform(-1, "iMouse", tuple(self._mouse_pos))
+        self._render_process_client.update_uniform(-1, "uMouse", tuple(self._mouse_pos))
 
-    def run(self, stream_mode="jpg", stream_quality=None, never_kill=False) -> None:
+    def run(self, stream_mode="jpg", stream_quality: Optional[int] = None, never_kill=False) -> None:
         """
         Starts the render loop and displays the Jupyter Widget (or render window if in standalone mode).
 
@@ -93,43 +98,73 @@ class SSVCanvas:
         else:
             self._render_process_client.render(0, self.streaming_mode)
 
-    def dbg_shader(self, fragment_shader: str):
+    def shader(self, shader_source: str, buffer_id=0, additional_template_directory: Optional[str] = None,
+               additional_templates=None):
         """
-        Sets up the pipeline to render a basic ShaderToy compatible shader.
-        Note that most ShaderToy uniforms are not yet implemented.
+        Registers, compiles and attaches a shader to a given render buffer.
 
-        :param fragment_shader: the GLSL source of the shader to render.
+        :param shader_source: the shader source code to preprocess. It should contain the necessary
+                              ``#pragma SSV <template_name>`` directive see :ref:`built-in-shader-templates` for more
+                              information.
+        :param buffer_id: the framebuffer id to register the shader to.
+        :param additional_template_directory: a path to a directory containing custom shader templates. See
+                                              :ref:`writing-shader-templates` for information about using custom shader
+                                              templates.
+        :param additional_templates: a list of custom shader templates (source code, not paths).See
+                                     :ref:`writing-shader-templates` for information about using custom shader
+                                     templates.
         """
-        self._render_process_client.register_shader(0, vertex_shader="""
-        #version 330
-        in vec2 in_vert;
-        in vec3 in_color;
-        out vec3 color;
-        out vec2 position;
-        void main() {
-            gl_Position = vec4(in_vert, 0.0, 1.0);
-            color = in_color;
-            position = in_vert*0.5+0.5;
-        }
-        """, fragment_shader=f"""
-        #version 330
-        out vec4 fragColor;
-        in vec3 color;
-        in vec2 position;
+        shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
+                                                additional_templates)
+        self._render_process_client.register_shader(buffer_id, **shaders)
+        # For now, we make sure to reset the vertex buffer when a shader is set to ensure it exists, this might not be
+        # done in the future though.
+        self._render_process_client.update_vertex_buffer(buffer_id, None)
 
-        uniform vec2 iResolution;
-        uniform float iTime;
-        uniform vec2 iMouse;
-        
-        {fragment_shader}
-        
-        void main() {{
-            // Not using the color attribute causes the compiler to strip it and confuses modernGL.
-            fragColor = mainImage(position * iResolution) + vec4(color, 1.0)*1e-6;
-        }}
-        """)
-        self._render_process_client.update_uniform(0, "iResolution", self.size)
-        self._render_process_client.update_vertex_buffer(0, None)
+    def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
+                                  additional_templates=None) -> str:
+        """
+        Gets the list of arguments a given shader template expects and returns a string containing their usage info.
+
+        :param shader_template_name: the name of the template to look for.
+        :param additional_template_directory: a path to a directory containing custom shader templates.
+        :param additional_templates: a list of custom shader templates (source code, not paths).
+        :return: the shader template's auto generated help string.
+        """
+        return self._preprocessor.dbg_query_shader_template(shader_template_name, additional_template_directory,
+                                                            additional_templates)
+
+    def dbg_query_shader_templates(self, additional_template_directory: Optional[str] = None) -> str:
+        """
+        Gets a list of all the shader templates available to the preprocessor.
+
+        :param additional_template_directory: a path to a directory containing custom shader templates.
+        :return: A string of all the shader templates which were found.
+        """
+        metadata = self._preprocessor.dbg_query_shader_templates(additional_template_directory)
+        shaders = "\n\n".join([f"\t'{shader.name}'\n"
+                               f"\t\tAuthor: {shader.author if shader.author else ''}\n"
+                               f"\t\tDescription: {shader.description if shader.description else ''}"
+                               for shader in metadata])
+        return f"Found shader templates: \n\n{shaders}"
+
+    def dbg_preprocess_shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
+                              additional_templates=None) -> dict[str, str]:
+        """
+        Runs the preprocessor on a shader and returns the results. Useful for debugging shaders.
+
+        :param shader_source: the shader source code to preprocess. It should contain the necessary
+                              ``#pragma SSV <template_name>`` directive see :ref:`built-in-shader-templates` for more
+                              information.
+        :param additional_template_directory: a path to a directory containing custom shader templates. See
+                                              :ref:`writing-shader-templates` for information about using custom shader
+                                              templates.
+        :param additional_templates: a list of custom shader templates (source code, not paths).See
+                                     :ref:`writing-shader-templates` for information about using custom shader
+                                     templates.
+        """
+        return self._preprocessor.preprocess(shader_source, None, additional_template_directory,
+                                             additional_templates)
 
     def dbg_render_test(self):
         """
