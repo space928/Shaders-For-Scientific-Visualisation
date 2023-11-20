@@ -115,14 +115,12 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         if directive.value != "pragma" or len(toks) <= 2:
             return super(SSVTemplatePragmaParser, self).on_directive_unknown(directive, toks, ifpassthru, precedingtoks)
 
-        if toks[0].value == "SSV":
-            ...
-        elif toks[0].value == "SSVTemplate":
+        if toks[0].value == "SSVTemplate":
             # print(f"Found SSV pragma: {SSVShaderArgsTokenizer.correct_tokens(toks[2:], self)}")
             self._pragma_args.append(SSVShaderArgsTokenizer.correct_tokens(toks[2:], self))
-        else:
-            log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join(toks)}",
-                severity=logging.ERROR)
+        # else:
+        #     log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join(toks)}",
+        #         severity=logging.DEBUG)
 
         return True
 
@@ -195,11 +193,9 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             if self._pragma_args is not None:
                 raise ValueError("Shader contains multiple shader template pragma directives! Only one is allowed.")
             self._pragma_args = SSVShaderArgsTokenizer.correct_tokens(toks[2:], self)
-        elif toks[0].value == "SSVTemplate":
-            ...
-        else:
-            log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join(toks)}",
-                severity=logging.ERROR)
+        # else:
+        #     log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join([t.value for t in toks])}",
+        #         severity=logging.DEBUG)
 
         return True
 

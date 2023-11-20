@@ -29,6 +29,7 @@ def test_ssv_preprocessor():
     # print(proc_shaders["fragment_shader"])
     # This is not a great unit test, it's sensitive to stylistic changes in the output which don't impact functionality.
     assert proc_shaders["vertex_shader"] == """#version 420
+#extension GL_ARB_shading_language_include : require
 #line 3 "global_uniforms.glsl"
 uniform float uTime;
 uniform vec4 uResolution;
@@ -45,6 +46,7 @@ void main() {
 }
 """
     assert proc_shaders["fragment_shader"] == """#version 420
+#extension GL_ARB_shading_language_include : require
 #line 3 "global_uniforms.glsl"
 uniform float uTime;
 uniform vec4 uResolution;

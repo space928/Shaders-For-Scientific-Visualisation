@@ -19,7 +19,6 @@
 #include "compat.glsl"
 #include "global_uniforms.glsl"
 
-
 #ifdef SHADER_STAGE_VERTEX
 in vec2 in_vert;
 in vec3 in_color;

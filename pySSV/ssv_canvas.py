@@ -99,7 +99,9 @@ class SSVCanvas:
             self._render_process_client.render(0, self.streaming_mode)
 
     def shader(self, shader_source: str, buffer_id=0, additional_template_directory: Optional[str] = None,
-               additional_templates=None):
+               additional_templates: Optional[list[str]] = None,
+               shader_defines: Optional[dict[str, str]] = None,
+               compiler_extensions: Optional[list[str]] = None):
         """
         Registers, compiles and attaches a shader to a given render buffer.
 
@@ -113,9 +115,12 @@ class SSVCanvas:
         :param additional_templates: a list of custom shader templates (source code, not paths).See
                                      :ref:`writing-shader-templates` for information about using custom shader
                                      templates.
+        :param shader_defines: extra preprocessor defines to be enabled globally.
+        :param compiler_extensions: a list of GLSL extensions required by this shader
+                                    (eg: ``GL_EXT_control_flow_attributes``)
         """
         shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
-                                                additional_templates)
+                                                additional_templates, shader_defines, compiler_extensions)
         self._render_process_client.register_shader(buffer_id, **shaders)
         # For now, we make sure to reset the vertex buffer when a shader is set to ensure it exists, this might not be
         # done in the future though.
@@ -149,7 +154,9 @@ class SSVCanvas:
         return f"Found shader templates: \n\n{shaders}"
 
     def dbg_preprocess_shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
-                              additional_templates=None) -> dict[str, str]:
+                              additional_templates: Optional[list[str]] = None,
+                              shader_defines: Optional[dict[str, str]] = None,
+                              compiler_extensions: Optional[list[str]] = None) -> dict[str, str]:
         """
         Runs the preprocessor on a shader and returns the results. Useful for debugging shaders.
 
@@ -162,9 +169,12 @@ class SSVCanvas:
         :param additional_templates: a list of custom shader templates (source code, not paths).See
                                      :ref:`writing-shader-templates` for information about using custom shader
                                      templates.
+        :param shader_defines: extra preprocessor defines to be enabled globally.
+        :param compiler_extensions: a list of GLSL extensions required by this shader
+                                    (eg: ``GL_EXT_control_flow_attributes``)
         """
         return self._preprocessor.preprocess(shader_source, None, additional_template_directory,
-                                             additional_templates)
+                                             additional_templates, shader_defines, compiler_extensions)
 
     def dbg_render_test(self):
         """

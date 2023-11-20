@@ -7,8 +7,13 @@
 // directive is the first in the file.
 #pragma PreventLine true
 _GL_VERSION
+#extension GL_ARB_shading_language_include : require
+#ifdef _GL_ADDITIONAL_EXTENSIONS
+_GL_ADDITIONAL_EXTENSIONS
+#endif
 #pragma PreventLine false
 #endif // _GL_VERSION
+
 #ifdef _GL_PRECISION
 // In OpenGL ES you need to specify the precision of variables, you can do this per-variable or specify a default.
 // https://stackoverflow.com/a/6336285

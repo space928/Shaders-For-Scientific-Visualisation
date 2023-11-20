@@ -78,7 +78,8 @@ class SSVShaderPreprocessor:
 
         return parser
 
-    def _make_defines(self, template_args: argparse.Namespace) -> list[tuple[str, str]]:
+    def _make_defines(self, template_args: argparse.Namespace, extra_defines: Optional[dict[str, str]],
+                      compiler_extensions: Optional[list[str]]) -> list[tuple[str, str]]:
         """
         Converts templates arguments from an argparse namespace to a list of tuples::
 
@@ -88,6 +89,9 @@ class SSVShaderPreprocessor:
             (_foo='False') -> <nothing>
 
         :param template_args: an argparse Namespace object.
+        :param extra_defines: extra preprocessor defines to be enabled globally.
+        :param compiler_extensions: a list of GLSL extensions required by this shader
+                                    (eg: ``GL_EXT_control_flow_attributes``)
         :return: a list of tuples of shader defines.
         """
         defines = []
@@ -106,6 +110,12 @@ class SSVShaderPreprocessor:
 
         defines.append(("SSV_SHADER", "1"))
         defines.append(("_GL_VERSION", f"#version {self._gl_version}"))
+        if compiler_extensions is not None and len(compiler_extensions) > 0:
+            defines.append(("_GL_ADDITIONAL_EXTENSIONS",
+                            "\n".join(f"#extension {ext} : require" for ext in compiler_extensions)))
+        if extra_defines is not None and len(extra_defines) > 0:
+            for define, value in extra_defines.items():
+                defines.append((define, value))
 
         return defines
 
@@ -168,7 +178,9 @@ class SSVShaderPreprocessor:
 
     def preprocess(self, source: str, filepath: Optional[str] = None,
                    additional_template_directory: Optional[str] = None,
-                   additional_templates: Optional[list[str]] = None):
+                   additional_templates: Optional[list[str]] = None,
+                   shader_defines: Optional[dict[str, str]] = None,
+                   compiler_extensions: Optional[list[str]] = None):
         """
         Preprocesses an SSV shader into multiple processed shaders for each pipeline.
 
@@ -182,6 +194,9 @@ class SSVShaderPreprocessor:
         :param additional_templates: a list of custom shader templates (source code, not paths). See
                                      :ref:`writing-shader-templates` for information about using custom shader
                                      templates.
+        :param shader_defines: extra preprocessor defines to be enabled globally.
+        :param compiler_extensions: a list of GLSL extensions required by this shader
+                                    (eg: ``GL_EXT_control_flow_attributes``)
         :return: a dict of compiled shaders for each of the required pipeline stages.
         """
         template_info = self._shader_parser.parse(source, filepath)
@@ -197,7 +212,7 @@ class SSVShaderPreprocessor:
         template_argparse = self._make_argparse(template_metadata)
         # Parse the template_info
         parsed_args = template_argparse.parse_args(template_info.args)
-        defines = self._make_defines(parsed_args)
+        defines = self._make_defines(parsed_args, shader_defines, compiler_extensions)
 
         stages = []
         for template_data in template_metadata.get("stage", []):
