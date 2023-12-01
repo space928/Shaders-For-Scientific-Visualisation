@@ -4,6 +4,71 @@
  */
 
 .ssv-render-widget {
-  background-color: #7aacc1;
+  background-color: var(--jp-layout-color1); /* #101515;*/
   padding: 2px;
+}
+
+.ssv-status-bar {
+  padding: 4px;
+  background-color: var(--jp-layout-color2); /* #203030;*/
+  color: var(--jp-ui-font-color1);
+  display: flex;
+  align-items: baseline;
+}
+
+[class^="ssv-status-"] {
+  padding: 2px 20px 2px 2px;
+}
+
+.ssv-status-disconnected {
+  color: var(--jp-error-color2);
+}
+
+.ssv-log {
+  height: 0;
+  max-height: 20rem;
+  margin: 10px 0 10px 20px;
+  overflow: auto;
+  color: var(--jp-ui-font-color2);
+  display: none;
+  /*white-space-collapse: preserve;*/
+}
+
+.ssv-log-debug {
+  color: var(--jp-ui-font-color2);
+}
+
+.ssv-log-info {
+  color: var(--jp-ui-font-color1);
+}
+
+.ssv-log-warn {
+  color: var(--jp-warn-color1);
+}
+
+.ssv-log-error {
+  color: var(--jp-error-color1);
+}
+
+.ssv-log.ssv-log-active {
+  height: auto;
+  display: block;
+}
+
+.ssv-button {
+  padding: 0.5rem;
+  margin-right: 2px;
+  font-family: sans-serif;
+  color: var(--jp-ui-font-color1);
+  background-color: var(--jp-layout-color3);
+  border: 1px solid #ffffff10;
+  border-radius: 3px;
+}
+
+.ssv-button:hover {
+  background-color: var(--jp-layout-color4);
+}
+
+.ssv-button:active {
+  background-color: var(--jp-layout-color2);
 }

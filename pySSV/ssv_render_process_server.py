@@ -125,7 +125,7 @@ class SSVRenderProcessServer:
                 self.__shutdown("requested by client")
                 return
             if self._command_queue_rx.qsize() > 1:
-                # If the command queue is getting backed (due to poor framerate for instance) prioritise that so that
+                # If the command queue is getting backed up (due to poor framerate for instance) prioritize that so that
                 # user control is not delayed.
                 for i in range(self._command_queue_rx.qsize()):
                     if not self.__parse_render_command(0):
@@ -141,7 +141,7 @@ class SSVRenderProcessServer:
             command_args = None
 
         if command is None:
-            # Command is None if we timeout before receiving a new command, this isn't an error in this case.
+            # Command is None if we time out before receiving a new command, this isn't an error in this case.
             pass
         elif command == "Stop":
             return False
@@ -153,7 +153,7 @@ class SSVRenderProcessServer:
             # New/Update frame buffer
             self._renderer.update_frame_buffer(*command_args)
             if command_args[0] == 0:
-                self.output_size = command_args[1]
+                self.output_size = command_args[2]
         elif command == "DFBO":
             # Delete frame buffer
             self._renderer.delete_frame_buffer(command_args[0])
@@ -169,8 +169,14 @@ class SSVRenderProcessServer:
             # Update uniform
             self._renderer.update_uniform(*command_args)
         elif command == "UpdV":
-            # Update buffer
+            # Update vertex buffer
             self._renderer.update_vertex_buffer(*command_args)
+        elif command == "UpdT":
+            # Update texture
+            self._renderer.update_texture(*command_args)
+        elif command == "DelT":
+            # Delete texture
+            self._renderer.delete_texture(*command_args)
         elif command == "RegS":
             # Register shader
             self._renderer.register_shader(*command_args)
@@ -182,8 +188,7 @@ class SSVRenderProcessServer:
             self.log_frame_timing = command_args[0]
         elif command == "DbRT":
             # Debug Render Test
-            if isinstance(self._renderer, SSVRenderOpenGL):
-                self._renderer.dbg_render_test()
+            pass
         else:
             log(f"Render process received unknown command from client '{command}' with args: {command_args}",
                 severity=logging.ERROR)
@@ -192,7 +197,7 @@ class SSVRenderProcessServer:
         return True
 
     def __shutdown(self, reason):
-        log(f"Render process shutting down... ({reason})", severity=logging.INFO)
+        log(f"Render process shutting down... ({reason})", severity=logging.WARN)
         self._command_queue_tx.put(("Stop",))
 
     def __render_frame(self):
@@ -201,11 +206,11 @@ class SSVRenderProcessServer:
         if not self._renderer.render():
             self.running = False
         if self.stream_mode == "png":
-            frame = self._renderer.get_frame()
+            frame = self._renderer.read_frame()
             render_time = time.time()
             stream_data = self.__to_png(frame)
         elif self.stream_mode == "jpg":
-            frame = self._renderer.get_frame(3)
+            frame = self._renderer.read_frame(3)
             render_time = time.time()
             stream_data = self.__to_jpg(frame)
         else:

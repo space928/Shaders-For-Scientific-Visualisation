@@ -4,7 +4,7 @@ import logging
 from multiprocessing import Process, Queue
 from queue import Empty
 from threading import Thread
-from typing import Callable, NewType, Optional
+from typing import Callable, NewType, Optional, Any
 
 import numpy.typing as npt
 
@@ -157,32 +157,64 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("SWdg", time))
 
-    def update_uniform(self, buffer_id: int, uniform_name: str, value):
+    def update_uniform(self, frame_buffer_uid: Optional[int], draw_call_uid: Optional[int],
+                       uniform_name: str, value: Any):
         """
         Updates the value of a named shader uniform.
 
-        :param buffer_id: the id of the program of the uniform to update. Set to -1 to update across all buffers.
+        :param frame_buffer_uid: the uid of the framebuffer of the uniform to update. Set to ``None`` to update across
+                                 all buffers.
+        :param draw_call_uid: the uid of the draw call of the uniform to update. Set to ``None`` to update across all
+                              buffers.
         :param uniform_name: the name of the shader uniform to update.
-        :param value: the new value of the shader uniform. (Must be convertible to GLSL type)
+        :param value: the new value of the shader uniform. (Must be convertible to a GLSL type)
         """
-        self._command_queue_tx.put(("UpdU", buffer_id, uniform_name, value))
+        self._command_queue_tx.put(("UpdU", frame_buffer_uid, draw_call_uid, uniform_name, value))
 
-    def update_vertex_buffer(self, buffer_id: int, array: Optional[npt.NDArray]):
+    def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
+                             vertex_array: npt.NDArray, index_array: Optional[npt.NDArray],
+                             vertex_attributes: tuple[str]):
         """
         Updates the data inside a vertex buffer.
 
-        :param buffer_id: the buffer_id of the vertex array to update.
-        :param array: a numpy array containing the new vertex data.
+        :param frame_buffer_uid: the uid of the framebuffer of the vertex buffer to update.
+        :param draw_call_uid: the uid of the draw call of the vertex buffer to update.
+        :param vertex_array: a numpy array containing the new vertex data.
+        :param index_array: optionally, a numpy array containing the indices of vertices ordered to make triangles.
+        :param vertex_attributes: a tuple of the names of the vertex attributes to map to in the shader, in the order
+                                  that they appear in the vertex array.
         """
-        self._command_queue_tx.put(("UpdV", buffer_id, array))
+        self._command_queue_tx.put(("UpdV", frame_buffer_uid, draw_call_uid, vertex_array, index_array,
+                                    vertex_attributes))
 
-    def register_shader(self, buffer_id: int, vertex_shader: str, fragment_shader: Optional[str] = None,
+    def update_texture(self, texture_uid: int, data: npt.NDArray, rect: Optional[tuple[int, int, int, int]]):
+        """
+        Creates or updates a texture from the NumPy array provided.
+
+        :param texture_uid: the uid of the texture to create or update.
+        :param data: a NumPy array containing the image data to copy to the texture.
+        :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
+                     update.
+        """
+        self._command_queue_tx.put(("UpdT", texture_uid, data, rect))
+
+    def delete_texture(self, texture_uid: int):
+        """
+        Destroys the given texture object.
+
+        :param texture_uid: the uid of the texture to destroy.
+        """
+        self._command_queue_tx.put(("DelT", texture_uid))
+
+    def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
+                        vertex_shader: str, fragment_shader: Optional[str] = None,
                         tess_control_shader: Optional[str] = None, tess_evaluation_shader: Optional[str] = None,
                         geometry_shader: Optional[str] = None, compute_shader: Optional[str] = None):
         """
         Compiles and registers a shader to a given framebuffer.
 
-        :param buffer_id: the framebuffer id to register the shader to.
+        :param frame_buffer_uid: the uid of the framebuffer to register the shader to.
+        :param draw_call_uid: the uid of the draw call to register the shader to.
         :param vertex_shader: the preprocessed vertex shader GLSL source.
         :param fragment_shader: the preprocessed fragment shader GLSL source.
         :param tess_control_shader: the preprocessed tessellation control shader GLSL source.
@@ -190,8 +222,8 @@ class SSVRenderProcessClient:
         :param geometry_shader: the preprocessed geometry shader GLSL source.
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
         """
-        self._command_queue_tx.put(("RegS", buffer_id, vertex_shader, fragment_shader, tess_control_shader,
-                                    tess_evaluation_shader, geometry_shader, compute_shader))
+        self._command_queue_tx.put(("RegS", frame_buffer_uid, draw_call_uid, vertex_shader, fragment_shader,
+                                    tess_control_shader, tess_evaluation_shader, geometry_shader, compute_shader))
 
     def dbg_log_context_info(self, full=False):
         """
@@ -211,6 +243,8 @@ class SSVRenderProcessClient:
 
     def dbg_render_test(self):
         """
+        **DEPRECATED**
+
         *[For debugging only]* Sets up the pipeline to render with a demo shader.
         """
         self._command_queue_tx.put(("DbRT",))
