@@ -48,3 +48,11 @@ developers wanting to extend pySSV and power users.
 
 .. automodule:: pySSV.ssv_pragma_parser
     :members:
+
+
+.. automodule:: pySSV.ssv_render_buffer
+    :members:
+
+
+.. automodule:: pySSV.ssv_vertex_buffer
+    :members:

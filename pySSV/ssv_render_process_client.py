@@ -106,24 +106,27 @@ class SSVRenderProcessClient:
         """
         self._on_log_observers.remove(observer)
 
-    def update_frame_buffer(self, buffer_id: int, size: (int, int), pixel_format: int):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), components: int = 4,
+                            dtype: str = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
-        
-        :param buffer_id: the id of the framebuffer to update/create. Buffer 0 is the output framebuffer.
-        :param size: the new resolution of the framebuffer.
-        :param pixel_format: the new pixel format of the framebuffer.
-        """
-        self._command_queue_tx.put(("UFBO", buffer_id, size, pixel_format))
 
-    def delete_frame_buffer(self, buffer_id: int):
+        :param frame_buffer_uid: the uid of the framebuffer to update/create. Buffer 0 is the output framebuffer.
+        :param order: the sorting order to render the frame buffers in, smaller values are rendered first.
+        :param size: the new resolution of the framebuffer.
+        :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
+        :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
+        """
+        self._command_queue_tx.put(("UFBO", frame_buffer_uid, order, size, components, dtype))
+
+    def delete_frame_buffer(self, buffer_uid: int):
         """
         Destroys the given framebuffer. *Note* that framebuffer 0 can't be destroyed as it is the output framebuffer.
 
-        :param buffer_id: the id of the framebuffer to destroy.
+        :param buffer_uid: the id of the framebuffer to destroy.
         """
-        self._command_queue_tx.put(("DFBO", buffer_id))
+        self._command_queue_tx.put(("DFBO", buffer_uid))
 
     def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[int] = None):
         """
@@ -172,8 +175,8 @@ class SSVRenderProcessClient:
         self._command_queue_tx.put(("UpdU", frame_buffer_uid, draw_call_uid, uniform_name, value))
 
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
-                             vertex_array: npt.NDArray, index_array: Optional[npt.NDArray],
-                             vertex_attributes: tuple[str]):
+                             vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
+                             vertex_attributes: Optional[tuple[str]]):
         """
         Updates the data inside a vertex buffer.
 

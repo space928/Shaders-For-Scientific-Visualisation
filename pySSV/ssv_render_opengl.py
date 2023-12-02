@@ -140,7 +140,8 @@ class SSVRenderOpenGL(SSVRender):
             render_buffer.frame_buffer = fb
             render_buffer.render_texture = fb.color_attachments[0]
         else:
-            self._render_buffers[frame_buffer_uid] = SSVRenderBufferOpenGL(order, self.ctx.gc_mode is None, fb, fb.color_attachments[0], {})
+            self._render_buffers[frame_buffer_uid] = SSVRenderBufferOpenGL(order, self.ctx.gc_mode is None, fb,
+                                                                           fb.color_attachments[0], {})
 
         # Update the resolution uniform in this buffer
         self.update_uniform(frame_buffer_uid, None, "uResolution", (*resolution, 0, 0))
@@ -165,7 +166,7 @@ class SSVRenderOpenGL(SSVRender):
     def update_uniform(self, frame_buffer_uid: Optional[int], draw_call_uid: Optional[int],
                        uniform_name: str, value: Any):
         def update_internal(program: moderngl.Program):
-            if uniform_name in program:
+            if program is not None and uniform_name in program:
                 program[uniform_name].value = value
 
         if frame_buffer_uid is not None and frame_buffer_uid not in self._render_buffers:
@@ -186,32 +187,35 @@ class SSVRenderOpenGL(SSVRender):
             if draw_call_uid is not None:
                 update_internal(self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid].shader_program)
             else:
-                [update_internal(vb.shader_program) for vb in self._render_buffers[frame_buffer_uid].draw_calls.values()]
+                [update_internal(vb.shader_program) for vb in
+                 self._render_buffers[frame_buffer_uid].draw_calls.values()]
         else:
             [update_internal(vb.shader_program) for rb in self._ordered_render_buffers for vb in rb.draw_calls.values()]
 
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
-                             vertex_array: npt.NDArray, index_array: Optional[npt.NDArray],
-                             vertex_attributes: tuple[str]):
+                             vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
+                             vertex_attributes: Optional[tuple[str]]):
         if frame_buffer_uid not in self._render_buffers:
             log(f"Attempted to update the vertex buffer for a non-existant render buffer (id={frame_buffer_uid})!",
                 severity=logging.ERROR)
             return
 
         if draw_call_uid not in self._render_buffers[frame_buffer_uid].draw_calls:
-            log(f"Attempted to update the vertex buffer for a non-existant draw call (id={draw_call_uid})!",
-                severity=logging.ERROR)
-            return
+            draw_call = SSVDrawCall()
+            draw_call.order = 0
+            draw_call.shader_program = None
+            self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid] = draw_call
+        else:
+            draw_call = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid]
 
-        draw_call = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid]
-
-        draw_call.vertex_buffer = self.ctx.buffer(vertex_array)
-        draw_call.index_buffer = self.ctx.buffer(index_array)
-        draw_call.vertex_attributes = vertex_attributes
+        draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
+        draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
+        draw_call.vertex_attributes = self._default_vertex_buffer_vertex_attributes if vertex_attributes is None else vertex_attributes
         try:
-            draw_call.vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
-                                                           *draw_call.vertex_attributes,
-                                                           index_buffer=draw_call.index_buffer)
+            if draw_call.shader_program is not None:
+                draw_call.vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
+                                                               *draw_call.vertex_attributes,
+                                                               index_buffer=draw_call.index_buffer)
         except KeyError as e:
             log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader!", severity=logging.ERROR)
             return
@@ -226,15 +230,18 @@ class SSVRenderOpenGL(SSVRender):
             return
 
         if draw_call_uid not in self._render_buffers[frame_buffer_uid].draw_calls:
+            log(f"Attempted to register a shader to a non-existant draw call (id={draw_call_uid})!",
+                severity=logging.ERROR)
+            return
             # This is a hack to allow a draw call to have a default vertex buffer. This means that if the user calls
             # the shader() method, a shader is registered correctly to render to the full screen even if no vertex
             # buffer is given afterwards.
-            draw_call = SSVDrawCall()
-            draw_call.vertex_buffer = self._default_vertex_buffer
-            draw_call.index_buffer = None
-            draw_call.vertex_attributes = self._default_vertex_buffer_vertex_attributes
+            # draw_call = SSVDrawCall()
+            # draw_call.vertex_buffer = self._default_vertex_buffer
+            # draw_call.index_buffer = None
+            # draw_call.vertex_attributes = self._default_vertex_buffer_vertex_attributes
+            # self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid] = draw_call
 
-            self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid] = draw_call
         draw_call = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid]
 
         # draw_call.shader_program.release()

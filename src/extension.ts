@@ -11,6 +11,20 @@
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 (window as any).__webpack_public_path__ =
   document.querySelector("body")!.getAttribute("data-base-url") +
-  "nbextensions/pySSV";
+  "nbextensions/py-ssv";
+
+// Classic Jupyter Notebook support
+if ((window as any).require) {
+  (window as any).require.config({
+    map: {
+      '*': {
+        "py-ssv": 'nbextensions/py-ssv/index',
+      },
+    },
+  });
+}
+
+// Export the required load_ipython_extension
+export function load_ipython_extension() {}
 
 export * from "./index";

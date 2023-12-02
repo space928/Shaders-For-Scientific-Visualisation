@@ -21,6 +21,7 @@ class SSVShaderPreprocessor:
 
     def __init__(self, gl_version: str):
         self._gl_version = gl_version
+        self._dynamic_uniforms = {}
         self._template_parser = SSVTemplatePragmaParser()
         self._shader_parser = SSVShaderPragmaParser()
 
@@ -116,6 +117,8 @@ class SSVShaderPreprocessor:
         if extra_defines is not None and len(extra_defines) > 0:
             for define, value in extra_defines.items():
                 defines.append((define, value))
+
+        defines.append(("_DYNAMIC_UNIFORMS", "\n".join(self._dynamic_uniforms.values())))
 
         return defines
 
@@ -296,3 +299,20 @@ class SSVShaderPreprocessor:
         template_argparse = self._make_argparse(template_metadata)
         # Get help string
         return template_argparse.format_help()
+
+    def add_dynamic_uniform(self, name: str, glsl_type: str):
+        """
+        Adds a uniform declaration to _DYNAMIC_UNIFORMS macro.
+
+        :param name: the name of the uniform to add. Must be a valid GLSL identifier.
+        :param glsl_type: the glsl type of the uniform.
+        """
+        self._dynamic_uniforms[name] = f"uniform {glsl_type} {name};"
+
+    def remove_dynamic_uniform(self, name: str):
+        """
+        Removes a uniform declaration from the dynamic uniforms.
+
+        :param name: the name of the uniform to remove.
+        """
+        del self._dynamic_uniforms[name]

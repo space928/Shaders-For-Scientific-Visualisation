@@ -108,8 +108,8 @@ class SSVRender(ABC):
 
     @abstractmethod
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
-                             vertex_array: npt.NDArray, index_array: Optional[npt.NDArray],
-                             vertex_attributes: tuple[str]):
+                             vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
+                             vertex_attributes: Optional[tuple[str]]):
         """
         Updates the data inside a vertex buffer.
 

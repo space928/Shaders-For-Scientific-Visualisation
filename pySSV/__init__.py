@@ -23,6 +23,13 @@ def _jupyter_labextension_paths():
         "dest": "py-ssv"
     }]
 
+def _jupyter_nbextension_paths():
+    return [dict(
+        section="notebook",
+        src="nbextension",
+        dest="py-ssv",
+        require="py-ssv/index")]
+
 
 # Various factory methods
 

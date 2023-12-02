@@ -7,6 +7,7 @@ from .ssv_render_process_client import SSVRenderProcessClient
 from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
 from .ssv_logging import log, set_output_stream
+from .ssv_render_buffer import SSVRenderBuffer
 
 
 class SSVCanvas:
@@ -39,12 +40,18 @@ class SSVCanvas:
             self.widget.on_stop(self.__on_stop)
             set_output_stream(SSVRenderWidgetLogIO(self.widget))
             # set_output_stream(sys.stdout)
-        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 1)
+        self._render_process_client = SSVRenderProcessClient(backend, timeout=None if standalone else 3)
         self._preprocessor = SSVShaderPreprocessor(gl_version="420")
 
         self._mouse_pos = [0, 0]
         # Cache the last parameters to the run() method for the widget's "play" button to use
         self._last_run_settings = {}
+
+        # Set up a default render buffer
+        self._main_render_buffer = SSVRenderBuffer(self, self._render_process_client, self._preprocessor,
+                                                   0, "main_render_buffer",
+                                                   999999, size, "f1", 4)
+        self.render_buffer_counter = 1
 
     def __del__(self):
         self.stop()
@@ -70,6 +77,15 @@ class SSVCanvas:
     def __on_mouse_y_updated(self, y):
         self._mouse_pos[1] = y.new
         self._render_process_client.update_uniform(None, None, "uMouse", tuple(self._mouse_pos))
+
+    @property
+    def main_render_buffer(self) -> SSVRenderBuffer:
+        """
+        Gets the main render buffer associated with this ``SSVCanvas``.
+
+        :return: the main render buffer.
+        """
+        return self._main_render_buffer
 
     def run(self, stream_mode="jpg", stream_quality: Optional[int] = None, never_kill=False) -> None:
         """
@@ -121,7 +137,7 @@ class SSVCanvas:
                shader_defines: Optional[dict[str, str]] = None,
                compiler_extensions: Optional[list[str]] = None):
         """
-        Registers, compiles and attaches a shader to a given render buffer.
+        Registers, compiles and attaches a shader to the main render buffer.
 
         :param shader_source: the shader source code to preprocess. It should contain the necessary
                               ``#pragma SSV <template_name>`` directive see :ref:`built-in-shader-templates` for more
@@ -136,9 +152,27 @@ class SSVCanvas:
         :param compiler_extensions: a list of GLSL extensions required by this shader
                                     (eg: ``GL_EXT_control_flow_attributes``)
         """
-        shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
-                                                additional_templates, shader_defines, compiler_extensions)
-        self._render_process_client.register_shader(0, 0, **shaders)
+        self._main_render_buffer.shader(shader_source, additional_template_directory, additional_templates,
+                                        shader_defines, compiler_extensions)
+
+    def render_buffer(self, size: tuple[int, int], name: Optional[str] = None, order: int = 0, dtype: str = "f1",
+                      components: int = 4) -> SSVRenderBuffer:
+        """
+        Creates a new render buffer for this canvas. Useful for effects requiring multi pass rendering.
+
+        :param size: the resolution of the new render buffer to create.
+        :param name: the name of this render buffer. This is the name given to the automatically generated uniform
+                     declaration. If set to ``None`` a name is automatically generated.
+        :param order: a number to hint the renderer as to the order to render the buffers in. Smaller values are
+                      rendered first; the main render buffer has an order of 999999.
+        :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
+        :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
+        :return: a new render buffer object.
+        """
+        render_buffer_name = name if name is not None else f"render_buffer{self.render_buffer_counter}"
+        self.render_buffer_counter += 1
+        return SSVRenderBuffer(self, self._render_process_client, self._preprocessor, None,
+                               render_buffer_name, order, size, dtype, components)
 
     def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
                                   additional_templates=None) -> str:

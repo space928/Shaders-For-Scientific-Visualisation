@@ -9,3 +9,7 @@ uniform vec2 uMouse;
 #define iResolution uResolution
 #define iMouse uMouse
 #endif
+
+#ifdef _DYNAMIC_UNIFORMS
+_DYNAMIC_UNIFORMS;
+#endif
