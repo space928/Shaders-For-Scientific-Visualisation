@@ -237,6 +237,10 @@ class SSVShaderPreprocessor:
             shader = io.StringIO()
             preprocessor.write(shader)
             compiled_shaders[f"{stage}_shader"] = shader.getvalue()
+        primitive_type = None
+        for p in template_metadata.get("input_primitive", []):
+            primitive_type = p.primitive_type
+        compiled_shaders["primitive_type"] = primitive_type
         return compiled_shaders
 
     def dbg_query_shader_templates(self,

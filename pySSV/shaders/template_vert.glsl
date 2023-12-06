@@ -14,21 +14,29 @@
 #ifdef SHADER_STAGE_VERTEX
 in vec2 in_vert;
 in vec3 in_color;
-out vec3 v_color;
+out vec4 v_color;
+
+struct VertexOutput {
+    vec4 position;
+    vec4 color;
+};
+
+#include "TEMPLATE_DATA"
+
 void main() {
-    T_ENTRYPOINT();
+    VertexOutput vOut = T_ENTRYPOINT();
+    gl_Position = vOut.position;
+    v_color = vOut.color;
 }
 #endif //SHADER_STAGE_VERTEX
 
 
 #ifdef SHADER_STAGE_FRAGMENT
 out vec4 fragColor;
-in vec3 v_color;
-
-#include "TEMPLATE_DATA"
+in vec4 v_color;
 
 void main() {
     // Not using the color attribute causes the compiler to strip it and confuses modernGL.
-    fragColor = vec4(v_color, 1.0);
+    fragColor = vec4(v_color);
 }
 #endif //SHADER_STAGE_FRAGMENT

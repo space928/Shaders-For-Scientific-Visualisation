@@ -11,6 +11,7 @@ import {
 } from "@jupyter-widgets/base";
 
 import {MODULE_NAME, MODULE_VERSION} from "./version";
+import {RENDERDOC_LOGO_SVG} from "./renderdoc_logo";
 
 // Import the CSS
 import "../css/widget.css";
@@ -36,7 +37,8 @@ export class SSVRenderModel extends DOMWidgetModel {
       status_connection: false,
       status_logs: "",
       mouse_pos_x: 0,
-      mouse_pos_y: 0
+      mouse_pos_y: 0,
+      enable_renderdoc: false
     };
   }
 
@@ -57,6 +59,7 @@ export class SSVRenderView extends DOMWidgetView {
   private _stream_img_element: HTMLImageElement | null = null;
   private _status_frame_stats_element: HTMLSpanElement | null = null;
   private _status_resolution_element: HTMLSpanElement | null = null;
+  private _log_button_element: HTMLButtonElement | null = null;
   private _log_element: HTMLElement | null = null;
 
   initialize(parameters: WidgetView.IInitializeParameters) {
@@ -71,6 +74,8 @@ export class SSVRenderView extends DOMWidgetView {
       case StreamingMode.JPG:
       case StreamingMode.PNG:
         this._stream_img_element = document.createElement("img");
+        this._stream_img_element.className = "ssv-render-viewport";
+        this._stream_img_element.setAttribute("draggable", "false");
         this.el.appendChild(this._stream_img_element);
         break;
       default:
@@ -110,6 +115,30 @@ export class SSVRenderView extends DOMWidgetView {
           this.model.save_changes();
         }
       );
+      this._stream_img_element.addEventListener(
+        "mousedown",
+        (event: MouseEvent) => {
+          this.send({"mousedown": 0});
+        }
+      );
+      this._stream_img_element.addEventListener(
+        "mouseup",
+        (event: MouseEvent) => {
+          this.send({"mouseup": 0});
+        }
+      );
+      this._stream_img_element.addEventListener(
+        "keydown",
+        (event: KeyboardEvent) => {
+          this.send({"keydown": event.key});
+        }
+      );
+      this._stream_img_element.addEventListener(
+        "keyup",
+        (event: KeyboardEvent) => {
+          this.send({"keyup": event.key});
+        }
+      );
     }
   }
 
@@ -135,12 +164,12 @@ export class SSVRenderView extends DOMWidgetView {
     status_bar_div.appendChild(status_play_pause);
     const play_button = document.createElement("button");
     play_button.textContent = "⏵";
-    play_button.className = "ssv-button";
+    play_button.className = "ssv-button ssv-icon-button";
     play_button.onclick = () => { this.send({"play": 0}) };
     status_play_pause.appendChild(play_button);
     const stop_button = document.createElement("button");
     stop_button.textContent = "⏹︎";
-    stop_button.className = "ssv-button";
+    stop_button.className = "ssv-button ssv-icon-button";
     stop_button.onclick = () => { this.send({"stop": 0}) };
     status_play_pause.appendChild(stop_button);
 
@@ -170,11 +199,28 @@ export class SSVRenderView extends DOMWidgetView {
       }
     }, this);
 
+    // Renderdoc capture button
+    const renderdoc_capture = document.createElement("span");
+    renderdoc_capture.className = "ssv-status-renderdoc";
+    status_bar_div.appendChild(renderdoc_capture);
+    const capture_button = document.createElement("button");
+    capture_button.innerHTML = RENDERDOC_LOGO_SVG;
+    capture_button.className = "ssv-button ssv-icon-button";
+    renderdoc_capture.appendChild(capture_button);
+    capture_button.style.visibility = this.model.get("enable_renderdoc") ? "visible" : "hidden";
+    capture_button.onclick = () => {
+      this.send({"renderdoc_capture": 0})
+    };
+    this.model.on("change:enable_renderdoc", () => {
+      capture_button.style.visibility = this.model.get("enable_renderdoc") ? "visible" : "hidden";
+    });
+
     // View Logs button
     const status_log = document.createElement("span");
     status_log.className = "ssv-status-log";
     status_bar_div.appendChild(status_log);
     const log_button = document.createElement("button");
+    this._log_button_element = log_button;
     log_button.textContent = "View Log";
     log_button.className = "ssv-button";
     status_log.appendChild(log_button);
@@ -198,12 +244,26 @@ export class SSVRenderView extends DOMWidgetView {
         let log_text: string = this.model.get("status_logs");
         log_text = log_text.replace(/\r\n|\r|\n/g, '<br>');
         log_text = log_text.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-        if (log_text.includes("[WARNING]"))
+        if (log_text.includes("[WARNING]")) {
           log_text = "<span class='ssv-log-warn'>" + log_text + "</span>";
-        else if (log_text.includes("[ERROR]"))
+          if (this._log_button_element)
+            this._log_button_element.textContent += " ⚠️";
+        } else if (log_text.includes("[ERROR]")) {
           log_text = "<span class='ssv-log-error'>" + log_text + "</span>";
+          if (this._log_button_element)
+            this._log_button_element.textContent += " ⛔";
+        }
+
+        // Work out if we need to auto-scroll to the bottom of the log.
+        // If the scroll position is within 150 pixels of the bottom, then we keep auto-scrolling.
+        const auto_scroll = this._log_element.scrollHeight == this._log_element.clientHeight ||
+          (this._log_element.scrollHeight - this._log_element.scrollTop - this._log_element.clientHeight) <= 150;
+
         // You would have to be pretty determined to use this as an XSS entrypoint
         this._log_element.innerHTML = this._log_element.innerHTML + log_text;
+
+        if (auto_scroll)
+          this._log_element.scrollTo({top: this._log_element.scrollHeight, behavior: "instant"});
       }
     }, this);
   }

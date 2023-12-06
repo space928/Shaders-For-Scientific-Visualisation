@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 import logging
 import time
-from typing import Optional, Any
+from typing import Optional, Any, Union
 from dataclasses import dataclass
 
 import moderngl
@@ -13,18 +13,42 @@ from .environment import ENVIRONMENT, Env
 from .ssv_logging import log
 from .ssv_render import SSVRender
 
+# Optional support for pyRenderdocApp
+try:
+    from pyRenderdocApp import load_render_doc, RENDERDOC_API_1_6_0
+except ImportError:
+    RENDERDOC_API_1_6_0 = None
+    load_render_doc = lambda: None
+
+PRIMITIVE_TYPES = {
+    "POINTS": moderngl.POINTS,
+    "LINES": moderngl.LINES,
+    "LINE_LOOP": moderngl.LINE_LOOP,
+    "LINE_STRIP": moderngl.LINE_STRIP,
+    "TRIANGLES": moderngl.TRIANGLES,
+    "TRIANGLE_STRIP": moderngl.TRIANGLE_STRIP,
+    "TRIANGLE_FAN": moderngl.TRIANGLE_FAN,
+    "LINES_ADJACENCY": moderngl.LINES_ADJACENCY,
+    "LINE_STRIP_ADJACENCY": moderngl.LINE_STRIP_ADJACENCY,
+    "TRIANGLES_ADJACENCY": moderngl.TRIANGLES_ADJACENCY,
+    "TRIANGLE_STRIP_ADJACENCY": moderngl.TRIANGLE_STRIP_ADJACENCY,
+    "PATCHES": moderngl.PATCHES
+}
+
 
 class SSVDrawCall:
     """
     Stores a reference to all the objects needed to represent a single draw call belonging to a render buffer.
     """
-    __slots__ = ["order", "vertex_buffer", "index_buffer", "vertex_attributes", "vertex_array", "shader_program"]
+    __slots__ = ["order", "vertex_buffer", "index_buffer", "vertex_attributes", "vertex_array", "shader_program",
+                 "primitive_type"]
     order: int
     vertex_buffer: Optional[moderngl.Buffer]
     index_buffer: Optional[moderngl.Buffer]
     vertex_attributes: tuple[str, ...]
     vertex_array: Optional[moderngl.VertexArray]
     shader_program: Optional[moderngl.Program]
+    primitive_type: int
 
     def __init__(self):
         self.order = 0
@@ -33,6 +57,7 @@ class SSVDrawCall:
         self.vertex_attributes = ()
         self.vertex_array = None
         self.shader_program = None
+        self.primitive_type = moderngl.TRIANGLES
 
     def release(self, needs_gc: bool):
         if needs_gc:
@@ -52,6 +77,7 @@ class SSVRenderBufferOpenGL:
     frame_buffer: moderngl.Framebuffer
     render_texture: moderngl.Texture
     draw_calls: dict[int, SSVDrawCall]
+    uniform_name: str
 
     def release(self):
         """
@@ -64,6 +90,19 @@ class SSVRenderBufferOpenGL:
         if self.needs_gc:
             self.frame_buffer.release()
             self.render_texture.release()
+
+
+@dataclass
+class SSVTexture:
+    """
+    Stores a reference to an OpenGL texture object.
+    """
+    texture: Union[moderngl.Texture, moderngl.Texture3D]
+    uniform_name: str
+
+    def release(self, needs_gc: bool):
+        if needs_gc:
+            self.texture.release()
 
 
 class SSVRenderOpenGL(SSVRender):
@@ -82,15 +121,20 @@ class SSVRenderOpenGL(SSVRender):
         dtype='f4',
     )
 
-    def __init__(self):
+    def __init__(self, use_renderdoc_api: bool = False):
         self._render_buffers: dict[int, SSVRenderBufferOpenGL] = {}
         self._ordered_render_buffers: list[SSVRenderBufferOpenGL] = []
-        self._texture_objects: dict[int, moderngl.Texture] = {}
+        self._texture_objects: dict[int, SSVTexture] = {}
+        self._renderdoc_api = None
+        self._renderdoc_is_capturing = False
+        if use_renderdoc_api:
+            self._renderdoc_api = load_render_doc()
         self.__create_context()
         self._start_time = time.time()
+        self._frame_no = 0
 
         # Create a default output framebuffer
-        self.update_frame_buffer(0, 999999, (640, 480))
+        self.update_frame_buffer(0, 999999, (640, 480), "main_render_buffer")
         self._default_vertex_buffer = self.ctx.buffer(self._default_vertices)
         self._default_vertex_buffer_vertex_attributes = ("in_vert", "in_color")
 
@@ -109,6 +153,11 @@ class SSVRenderOpenGL(SSVRender):
         # To use moderngl with threading we need call the garbage collector manually
         # self.ctx.gc_mode = "context_gc"
 
+        # Enable depth testing and set the compare function to LEQUAL so that multiple passes can render on top of each
+        # other.
+        self.ctx.enable(moderngl.DEPTH_TEST)
+        self.ctx.depth_func = "<="
+
     def log_context_info(self, full=False):
         """
         Logs the OpenGL information to the console for debugging.
@@ -126,22 +175,26 @@ class SSVRenderOpenGL(SSVRender):
             extensions = pformat(self.ctx.extensions, indent=4)
             log(f"GL Extensions: \n{extensions}", severity=logging.INFO)
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), components: int = 4,
-                            dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+                            components: int = 4, dtype: str = "f1"):
         # TODO: It might make sense to decouple the moderngl dtype from our dtype if this is meant to be used by an
         #  abstract class.
         resolution = (min(size[0], self.ctx.info["GL_MAX_VIEWPORT_DIMS"][0]),
                       min(size[1], self.ctx.info["GL_MAX_VIEWPORT_DIMS"][1]))
 
-        fb = self.ctx.simple_framebuffer(resolution, components=components, dtype=dtype)
+        # Note that this is less efficient than a 'renderbuffer', but it allows for read back
+        color_attachment = self.ctx.texture(resolution, components=components, dtype=dtype)
+        depth_attachment = self.ctx.depth_texture(resolution)
+        fb = self.ctx.framebuffer(color_attachment, depth_attachment)
 
         if frame_buffer_uid in self._render_buffers:
             render_buffer = self._render_buffers[frame_buffer_uid]
             render_buffer.frame_buffer = fb
             render_buffer.render_texture = fb.color_attachments[0]
+            render_buffer.uniform_name = uniform_name
         else:
             self._render_buffers[frame_buffer_uid] = SSVRenderBufferOpenGL(order, self.ctx.gc_mode is None, fb,
-                                                                           fb.color_attachments[0], {})
+                                                                           fb.color_attachments[0], {}, uniform_name)
 
         # Update the resolution uniform in this buffer
         self.update_uniform(frame_buffer_uid, None, "uResolution", (*resolution, 0, 0))
@@ -223,7 +276,8 @@ class SSVRenderOpenGL(SSVRender):
     def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
-                        geometry_shader: Optional[str], compute_shader: Optional[str]):
+                        geometry_shader: Optional[str], compute_shader: Optional[str],
+                        primitive_type: Optional[str] = None):
         if frame_buffer_uid not in self._render_buffers:
             log(f"Attempted to register a shader to a non-existant render buffer (id={frame_buffer_uid})!",
                 severity=logging.ERROR)
@@ -254,6 +308,8 @@ class SSVRenderOpenGL(SSVRender):
                                  tess_control_shader=tess_control_shader,
                                  tess_evaluation_shader=tess_evaluation_shader))
 
+            draw_call.primitive_type = moderngl.TRIANGLES if primitive_type is None else PRIMITIVE_TYPES[primitive_type]
+
             # Creating a new shader program invalidates any previously bound vertex arrays, so we need to recreate it.
             # Annoyingly, to support the "default" case where the user doesn't call update_vertex_buffer() we need to
             # create this vertex array no matter what; even if the user subsequently calls update_vertex_buffer which
@@ -270,13 +326,158 @@ class SSVRenderOpenGL(SSVRender):
 
         # Set the resolution uniform as soon as the program is created
         fb = self._render_buffers[frame_buffer_uid].frame_buffer
-        self.update_uniform(draw_call_uid, draw_call_uid, "uResolution", (fb.width, fb.height, 0, 0))
+        self.update_uniform(frame_buffer_uid, draw_call_uid, "uResolution", (fb.width, fb.height, 0, 0))
 
-    def update_texture(self, texture_uid: int, data: npt.NDArray, rect: Optional[tuple[int, int, int, int]]):
-        ...
+    @staticmethod
+    def _determine_texture_shape(data: npt.NDArray,
+                                 override_dtype: Optional[str]) -> tuple[int, int, int, int, Optional[str]]:
+        """
+        Attempts to determine suitable texture parameters given an ndarray. This method returns (0,0,0,0,None) if a
+        suitable format cannot be found.
+
+        :param data: the ndarray to parse.
+        :param override_dtype: optionally, a moderngl dtype string to use instead of the numpy dtype.
+        :return: (components, depth, height, width, dtype)
+        """
+        width, height, depth, components, dtype = (0, 0, 0, 0, None)
+        if len(data.shape) == 1:
+            # Simple 1D single component texture/buffer texture
+            width = data.shape[0]
+            height = 1
+            components = 1
+            depth = 0
+        elif len(data.shape) == 2:
+            if data.shape[1] <= 4:
+                # 1D texture with up to 4 components
+                width, components = data.shape
+                height = 1
+                depth = 0
+            else:
+                # 2D texture with 1 component
+                width, height = data.shape
+                components = 1
+                depth = 0
+        elif len(data.shape) == 3:
+            if data.shape[2] <= 4:
+                # 2D texture with up to 4 components
+                width, height, components = data.shape
+                depth = 0
+            else:
+                # 3D texture with 1 component
+                width, height, depth = data.shape
+                components = 1
+        elif len(data.shape) == 4:
+            if data.shape[3] <= 4:
+                width, height, depth, components = data.shape
+            else:
+                # Too many dimensions
+                log(f"Couldn't convert array with shape: {data.shape} into a texture! Too many dimensions.",
+                    severity=logging.ERROR)
+        else:
+            # Too many dimensions
+            log(f"Couldn't convert array with shape: {data.shape} into a texture! Too many dimensions.",
+                severity=logging.ERROR)
+
+        if override_dtype is not None:
+            if len(override_dtype) != 2:
+                log(f"Invalid dtype '{override_dtype}' provided!", severity=logging.ERROR)
+                return 0, 0, 0, 0, None
+            try:
+                if int(override_dtype[1]) != data.dtype.itemsize:
+                    log(f"Override dtype '{override_dtype}' item size does not match that of the input array "
+                        f"({int(override_dtype[1])} != {data.dtype.itemsize})!", severity=logging.ERROR)
+                    return 0, 0, 0, 0, None
+            except ValueError:
+                log(f"Invalid dtype '{override_dtype}' provided!", severity=logging.ERROR)
+                return 0, 0, 0, 0, None
+            dtype = override_dtype
+
+        conversion = {
+            "b": "u",  # bool
+            "u": "u",  # uint
+            "i": "i",  # int
+            "f": "f",  # float
+            "c": "f",  # complex -> 2  floats
+            "S": "u",  # byte string
+            "V": "u",  # void
+        }
+
+        if dtype is not None and data.dtype.kind in conversion:
+            if not data.dtype.isnative:
+                log(f"Unsupported dtype '{data.dtype}', must match system endianess.", severity=logging.ERROR)
+                return 0, 0, 0, 0, None
+
+            dtype = conversion[data.dtype.kind]
+            if data.dtype.kind == "c" and (
+                    data.dtype.itemsize == 2 or data.dtype.itemsize == 4 or data.dtype.itemsize == 8):
+                # Special case for complex data types
+                if components <= 2:
+                    # Split complex values into two floats
+                    components *= 2
+                    dtype = f"{dtype}{data.dtype.itemsize / 2}"
+                else:
+                    log(f"Unsupported dtype '{data.dtype}', complex types can only be used in 1 or 2 component textures!",
+                        severity=logging.ERROR)
+                    return 0, 0, 0, 0, None
+            elif data.dtype.itemsize == 1 or data.dtype.itemsize == 2 or data.dtype.itemsize == 4:
+                dtype = f"{dtype}{data.dtype.itemsize}"
+            else:
+                log(f"Unsupported dtype '{data.dtype}', must have an itemsize of 1, 2, or 4!", severity=logging.ERROR)
+                return 0, 0, 0, 0, None
+
+        return components, depth, height, width, dtype
+
+    def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
+                       override_dtype: Optional[str],
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
+        # Try to determine the shape of the texture to create
+        components, depth, height, width, dtype = self._determine_texture_shape(data, override_dtype)
+
+        if width <= 0 or dtype is None:
+            return
+        if texture_uid not in self._texture_objects:
+            # Texture doesn't already exist, create a new one
+            if uniform_name is None:
+                log(f"Couldn't create texture, uniform_name must not be None", severity=logging.ERROR)
+                return
+            try:
+                if depth >= 0:
+                    texture = self.ctx.texture3d((width, height, depth), components, data, dtype=dtype)
+                else:
+                    texture = self.ctx.texture((width, height), components, data, dtype=dtype)
+                self._texture_objects[texture_uid] = SSVTexture(texture, uniform_name)
+            except Exception as e:
+                log(f"Couldn't create texture: \n{e}", severity=logging.ERROR)
+                return
+        else:
+            # Update an existing texture
+            texture = self._texture_objects[texture_uid]
+            if uniform_name is not None:
+                texture.uniform_name = uniform_name
+            try:
+                texture.texture.write(data, rect)
+            except Exception as e:
+                log(f"Couldn't update texture: \n{e}", severity=logging.ERROR)
+                return
 
     def delete_texture(self, texture_uid: int):
-        ...
+        if texture_uid in self._texture_objects:
+            del self._texture_objects[texture_uid]
+
+    def _bind_textures(self, program: moderngl.Program):
+        image_unit = 0
+        # Bind all the render buffers
+        for fb in self._render_buffers.values():
+            if fb.uniform_name in program:
+                program[fb.uniform_name].value = image_unit
+                fb.frame_buffer.color_attachments[0].use(image_unit)
+                image_unit += 1
+        # Bind all the user textures
+        for texture in self._texture_objects.values():
+            if texture.uniform_name in program:
+                program[texture.uniform_name].value = image_unit
+                texture.texture.use(image_unit)
+                image_unit += 1
 
     def render(self):
         if 0 not in self._render_buffers:
@@ -284,7 +485,12 @@ class SSVRenderOpenGL(SSVRender):
                 severity=logging.ERROR)
             return False
 
+        if self._renderdoc_is_capturing:
+            self._renderdoc_api.start_frame_capture(None, None)
+
         self.update_uniform(None, None, "uTime", time.time() - self._start_time)
+        self.update_uniform(None, None, "uFrame", self._frame_no)
+        self._frame_no += 1
 
         for rb in self._ordered_render_buffers:
             rb.frame_buffer.use()
@@ -296,7 +502,20 @@ class SSVRenderOpenGL(SSVRender):
 
             self.ctx.clear()
             for dc in draw_calls:
-                dc.vertex_array.render(mode=moderngl.TRIANGLES)
+                if dc.vertex_array is not None:
+                    self._bind_textures(dc.shader_program)
+                    dc.vertex_array.render(mode=dc.primitive_type)
+
+        if self._renderdoc_is_capturing:
+            result = self._renderdoc_api.end_frame_capture(None, None)
+            if result:
+                n = self._renderdoc_api.get_num_captures()
+                valid, filepath, _, timestamp = self._renderdoc_api.get_capture(n - 1)
+                log(f"Renderdoc captured frame successfully! Capture index = {n - 1}; filepath = '{filepath}'",
+                    severity=logging.INFO)
+            else:
+                log(f"Renderdoc failed to capture the frame!", severity=logging.WARN)
+        self._renderdoc_is_capturing = False
 
         return True
 
@@ -305,3 +524,12 @@ class SSVRenderOpenGL(SSVRender):
 
     def read_frame_into(self, buffer, components: int = 4, frame_buffer_uid: int = 0):
         self._render_buffers[frame_buffer_uid].frame_buffer.read_into(buffer, components=components)
+
+    def renderdoc_capture_frame(self, filename: Optional[str]):
+        if self._renderdoc_api is not None:
+            self._renderdoc_api.set_capture_file_path_template(filename)
+            if not self._renderdoc_api.is_target_control_connected():
+                self._renderdoc_api.launch_replay_ui(True, None)
+            else:
+                self._renderdoc_api.show_replay_ui()
+            self._renderdoc_is_capturing = True

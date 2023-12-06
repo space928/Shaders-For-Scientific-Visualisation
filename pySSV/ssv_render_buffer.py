@@ -1,7 +1,7 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any
 
 from .ssv_vertex_buffer import SSVVertexBuffer
 
@@ -48,7 +48,8 @@ class SSVRenderBuffer:
         self._dtype = dtype
 
         # Register this frame buffer
-        render_process_client.update_frame_buffer(render_buffer_uid, order, size, components, dtype)
+        render_process_client.update_frame_buffer(self._render_buffer_uid, order, size, render_buffer_name, components, dtype)
+        # TODO: Support sampler3D
         preprocessor.add_dynamic_uniform(render_buffer_name, "sampler2D")
 
         # Create a default full screen draw call for this render buffer
@@ -57,7 +58,7 @@ class SSVRenderBuffer:
 
     def _update_frame_buffer(self):
         self._render_process_client.update_frame_buffer(self._render_buffer_uid, self._order, self._size,
-                                                        self._components, self._dtype)
+                                                        self._render_buffer_name, self._components, self._dtype)
 
     @property
     def render_buffer_uid(self) -> int:
@@ -159,6 +160,18 @@ class SSVRenderBuffer:
         """
         self._full_screen_vertex_buffer.shader(shader_source, additional_template_directory, additional_templates,
                                                shader_defines, compiler_extensions)
+
+    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = False,
+                       share_with_canvas: bool = False) -> None:
+        """
+        Sets the value of a uniform associated with this buffer's full-screen shader.
+
+        :param uniform_name: the name of the uniform to set.
+        :param value: the value to set. Must be compatible with the destination uniform.
+        :param share_with_render_buffer: update this uniform across all shaders in this render buffer.
+        :param share_with_canvas: update this uniform across all shaders in this canvas.
+        """
+        self._full_screen_vertex_buffer.update_uniform(uniform_name, value, share_with_render_buffer, share_with_canvas)
 
     def vertex_buffer(self) -> SSVVertexBuffer:
         """

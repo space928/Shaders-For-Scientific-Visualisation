@@ -4,8 +4,9 @@ import logging
 from multiprocessing import Process, Queue
 from queue import Empty
 from threading import Thread
-from typing import Callable, NewType, Optional, Any
+from typing import Callable, NewType, Optional, Any, Union
 
+import numpy as np
 import numpy.typing as npt
 
 from . import ssv_logging
@@ -23,12 +24,13 @@ class SSVRenderProcessClient:
     ``SSVRenderProcessServer``).
     """
 
-    def __init__(self, backend, timeout=1):
+    def __init__(self, backend: str, timeout: Optional[float] = 1, use_renderdoc_api: bool = False):
         """
         Initialises a new Render Process Client and starts the render process.
 
         :param backend: the rendering backend to use.
         :param timeout: the render process watchdog timeout, set to None to disable.
+        :param use_renderdoc_api: whether the renderdoc_api should be initialized.
         """
         self._command_queue_tx = Queue()
         self._command_queue_rx = Queue()
@@ -41,7 +43,7 @@ class SSVRenderProcessClient:
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
         self._render_process = Process(target=SSVRenderProcessServer, daemon=True,
                                        args=(backend, self._command_queue_rx, self._command_queue_tx,
-                                             ssv_logging.get_severity(), timeout))
+                                             ssv_logging.get_severity(), timeout, use_renderdoc_api))
         self._render_process.start()
         self._is_alive = True
 
@@ -106,8 +108,8 @@ class SSVRenderProcessClient:
         """
         self._on_log_observers.remove(observer)
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), components: int = 4,
-                            dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+                            components: int = 4, dtype: str = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
@@ -115,10 +117,11 @@ class SSVRenderProcessClient:
         :param frame_buffer_uid: the uid of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param order: the sorting order to render the frame buffers in, smaller values are rendered first.
         :param size: the new resolution of the framebuffer.
+        :param uniform_name: the name of the uniform to bind this frame buffer to.
         :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
         :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
         """
-        self._command_queue_tx.put(("UFBO", frame_buffer_uid, order, size, components, dtype))
+        self._command_queue_tx.put(("UFBO", frame_buffer_uid, order, size, uniform_name, components, dtype))
 
     def delete_frame_buffer(self, buffer_uid: int):
         """
@@ -172,6 +175,9 @@ class SSVRenderProcessClient:
         :param uniform_name: the name of the shader uniform to update.
         :param value: the new value of the shader uniform. (Must be convertible to a GLSL type)
         """
+        if isinstance(value, np.ndarray):
+            if len(value.shape) > 1:
+                value = value.flatten()
         self._command_queue_tx.put(("UpdU", frame_buffer_uid, draw_call_uid, uniform_name, value))
 
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
@@ -190,16 +196,21 @@ class SSVRenderProcessClient:
         self._command_queue_tx.put(("UpdV", frame_buffer_uid, draw_call_uid, vertex_array, index_array,
                                     vertex_attributes))
 
-    def update_texture(self, texture_uid: int, data: npt.NDArray, rect: Optional[tuple[int, int, int, int]]):
+    def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
+                       override_dtype: Optional[str],
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
         """
         Creates or updates a texture from the NumPy array provided.
 
         :param texture_uid: the uid of the texture to create or update.
         :param data: a NumPy array containing the image data to copy to the texture.
+        :param uniform_name: the name of the shader uniform to associate this texture with.
+        :param override_dtype: Optionally, a moderngl override
         :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
                      update.
         """
-        self._command_queue_tx.put(("UpdT", texture_uid, data, rect))
+        # TODO: Optimise data transport by using shared buffers
+        self._command_queue_tx.put(("UpdT", texture_uid, data, uniform_name, override_dtype, rect))
 
     def delete_texture(self, texture_uid: int):
         """
@@ -212,7 +223,8 @@ class SSVRenderProcessClient:
     def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
                         vertex_shader: str, fragment_shader: Optional[str] = None,
                         tess_control_shader: Optional[str] = None, tess_evaluation_shader: Optional[str] = None,
-                        geometry_shader: Optional[str] = None, compute_shader: Optional[str] = None):
+                        geometry_shader: Optional[str] = None, compute_shader: Optional[str] = None,
+                        primitive_type: Optional[str] = None):
         """
         Compiles and registers a shader to a given framebuffer.
 
@@ -224,9 +236,20 @@ class SSVRenderProcessClient:
         :param tess_evaluation_shader: the preprocessed tessellation evaluation shader GLSL source.
         :param geometry_shader: the preprocessed geometry shader GLSL source.
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
+        :param primitive_type: what type of input primitive to treat the vertex data as. One of ("TRIANGLES", "LINES",
+                               "POINTS), defaults to "TRIANGLES" if ``None``.
         """
         self._command_queue_tx.put(("RegS", frame_buffer_uid, draw_call_uid, vertex_shader, fragment_shader,
-                                    tess_control_shader, tess_evaluation_shader, geometry_shader, compute_shader))
+                                    tess_control_shader, tess_evaluation_shader, geometry_shader, compute_shader,
+                                    primitive_type))
+
+    def renderdoc_capture_frame(self, filename: Optional[str]):
+        """
+        Triggers a frame capture with Renderdoc if it's initialised.
+
+        :param filename: optionally, the filename and path to save the capture with.
+        """
+        self._command_queue_tx.put(("RdCp", filename))
 
     def dbg_log_context_info(self, full=False):
         """

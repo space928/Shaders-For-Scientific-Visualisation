@@ -27,6 +27,8 @@ class SSVTemplatePragmaData(argparse.Namespace):
     choices: list[str] = None
     const: str = None
     # description: list[str] = None
+    # input_primitive
+    primitive_type: str = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -92,6 +94,11 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
         arg_parser.add_argument("--description", "-d",
                                 help="A brief description of the argument and the value it expects. Note that for "
                                      "implementation reasons the description can't contain dashes.")
+        input_primitive_parser = sub_parsers.add_parser("input_primitive",
+                                                        help="Specifies what primitive type the vertex data should be "
+                                                             "treated as.")
+        input_primitive_parser.add_argument("primitive_type", choices=["POINTS", "LINES", "TRIANGLES"],
+                                            default="TRIANGLES")
 
         self._pragma_args = []
 

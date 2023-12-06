@@ -1,7 +1,7 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any
 import numpy.typing as npt
 
 if TYPE_CHECKING:
@@ -78,3 +78,17 @@ class SSVVertexBuffer:
                                                 additional_templates, shader_defines, compiler_extensions)
         self._render_process_client.register_shader(self._render_buffer.render_buffer_uid, self._draw_call_uid,
                                                     **shaders)
+
+    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = False,
+                       share_with_canvas: bool = False) -> None:
+        """
+        Sets the value of a uniform associated with this draw call.
+
+        :param uniform_name: the name of the uniform to set.
+        :param value: the value to set. Must be compatible with the destination uniform.
+        :param share_with_render_buffer: update this uniform across all shaders in this render buffer.
+        :param share_with_canvas: update this uniform across all shaders in this canvas.
+        """
+        self._render_process_client.update_uniform(None if share_with_canvas else self._render_buffer.render_buffer_uid,
+                                                   None if share_with_render_buffer else self._draw_call_uid,
+                                                   uniform_name, value)

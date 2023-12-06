@@ -37,11 +37,13 @@ class SSVRenderProcessServer:
     in a dedicated process by SSVRenderProcessClient.
     """
 
-    def __init__(self, backend, command_queue_tx, command_queue_rx, log_severity, timeout):
+    def __init__(self, backend: str, command_queue_tx: Queue, command_queue_rx: Queue, log_severity: int,
+                 timeout: Optional[float], use_renderdoc_api: bool = False):
         self._renderer: Optional[SSVRender] = None
         self._command_queue_tx: Queue = command_queue_tx
         self._command_queue_rx: Queue = command_queue_rx
         self.__init_logger(log_severity)
+        self.use_renderdoc_api = use_renderdoc_api
 
         self.running = False
         self.target_framerate = 60
@@ -60,14 +62,14 @@ class SSVRenderProcessServer:
 
         self.__init_render_process(backend)
 
-    def __init_logger(self, log_severity):
+    def __init_logger(self, log_severity: int):
         ssv_logging.set_severity(log_severity)
         log_stream = SSVRenderProcessLogger(self._command_queue_tx)
         ssv_logging.set_output_stream(log_stream, level=log_severity, prefix="pySSV_Render")
 
-    def __init_render_process(self, backend):
+    def __init_render_process(self, backend: str):
         if backend == "opengl":
-            self._renderer = SSVRenderOpenGL()
+            self._renderer = SSVRenderOpenGL(self.use_renderdoc_api)
         else:
             self._renderer = None
             log(f"Backend '{backend}' does not exist!", logging.ERROR)
@@ -135,7 +137,7 @@ class SSVRenderProcessServer:
     def __parse_render_command(self, timeout):
         try:
             command, *command_args = self._command_queue_rx.get(block=True, timeout=timeout)
-            log(f"Render Process: Received command '{command}': {command_args}", severity=logging.DEBUG)
+            # log(f"Render Process: Received command '{command}': {command_args}", severity=logging.INFO)
         except Empty:
             command = None
             command_args = None
@@ -180,6 +182,9 @@ class SSVRenderProcessServer:
         elif command == "RegS":
             # Register shader
             self._renderer.register_shader(*command_args)
+        elif command == "RdCp":
+            # Renderdoc capture frame
+            self._renderer.renderdoc_capture_frame(*command_args)
         elif command == "LogC":
             # Log Context Info
             self._renderer.log_context_info(command_args[0])

@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 import numpy.typing as npt
 
@@ -68,8 +68,8 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), components: int = 4,
-                            dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+                            components: int = 4, dtype: str = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
@@ -77,6 +77,7 @@ class SSVRender(ABC):
         :param frame_buffer_uid: the uid of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param order: the sorting order to render the frame buffers in, smaller values are rendered first.
         :param size: the new resolution of the framebuffer.
+        :param uniform_name: the name of the uniform to bind this frame buffer to.
         :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
         :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
         """
@@ -126,7 +127,8 @@ class SSVRender(ABC):
     def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
-                        geometry_shader: Optional[str], compute_shader: Optional[str]):
+                        geometry_shader: Optional[str], compute_shader: Optional[str],
+                        primitive_type: Optional[str] = None):
         """
         Compiles and registers a shader to a given framebuffer.
 
@@ -138,16 +140,22 @@ class SSVRender(ABC):
         :param tess_evaluation_shader: the preprocessed tessellation evaluation shader GLSL source.
         :param geometry_shader: the preprocessed geometry shader GLSL source.
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
+        :param primitive_type: what type of input primitive to treat the vertex data as. One of ("TRIANGLES", "LINES",
+                               "POINTS), defaults to "TRIANGLES" if ``None``.
         """
         ...
 
     @abstractmethod
-    def update_texture(self, texture_uid: int, data: npt.NDArray, rect: Optional[tuple[int, int, int, int]]):
+    def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
+                       override_dtype: Optional[str],
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
         """
         Creates or updates a texture from the NumPy array provided.
 
         :param texture_uid: the uid of the texture to create or update.
         :param data: a NumPy array containing the image data to copy to the texture.
+        :param uniform_name: the name of the shader uniform to associate this texture with.
+        :param override_dtype: optionally, a moderngl override
         :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
                      update.
         """
@@ -159,5 +167,14 @@ class SSVRender(ABC):
         Destroys the given texture object.
 
         :param texture_uid: the uid of the texture to destroy.
+        """
+        ...
+
+    @abstractmethod
+    def renderdoc_capture_frame(self, filename: Optional[str]):
+        """
+        Triggers a frame capture with Renderdoc if it's initialised.
+
+        :param filename: optionally, the filename and path to save the capture with.
         """
         ...

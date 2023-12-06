@@ -8,12 +8,26 @@
   padding: 2px;
 }
 
+.ssv-render-viewport {
+
+}
+
 .ssv-status-bar {
   padding: 4px;
   background-color: var(--jp-layout-color2); /* #203030;*/
   color: var(--jp-ui-font-color1);
   display: flex;
-  align-items: baseline;
+  align-items: center;
+}
+
+.ssv-icon-button {
+  aspect-ratio: 1;
+  font-size: 1rem;
+}
+
+.ssv-icon {
+  fill: var(--jp-ui-font-color1);
+  stroke-width: 0;
 }
 
 [class^="ssv-status-"] {
@@ -56,13 +70,14 @@
 }
 
 .ssv-button {
-  padding: 0.5rem;
+  padding: 0 0.5rem;
   margin-right: 2px;
   font-family: sans-serif;
   color: var(--jp-ui-font-color1);
   background-color: var(--jp-layout-color3);
   border: 1px solid #ffffff10;
   border-radius: 3px;
+  height: 2.4rem;
 }
 
 .ssv-button:hover {
