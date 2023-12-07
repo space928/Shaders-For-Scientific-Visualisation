@@ -12,6 +12,7 @@ import numpy.typing as npt
 from .environment import ENVIRONMENT, Env
 from .ssv_logging import log
 from .ssv_render import SSVRender
+from .ssv_texture import determine_texture_shape
 
 # Optional support for pyRenderdocApp
 try:
@@ -57,7 +58,7 @@ class SSVDrawCall:
         self.vertex_attributes = ()
         self.vertex_array = None
         self.shader_program = None
-        self.primitive_type = moderngl.TRIANGLES
+        self.primitive_type = int(moderngl.TRIANGLES)
 
     def release(self, needs_gc: bool):
         if needs_gc:
@@ -93,7 +94,7 @@ class SSVRenderBufferOpenGL:
 
 
 @dataclass
-class SSVTexture:
+class SSVTextureOpenGL:
     """
     Stores a reference to an OpenGL texture object.
     """
@@ -124,7 +125,7 @@ class SSVRenderOpenGL(SSVRender):
     def __init__(self, use_renderdoc_api: bool = False):
         self._render_buffers: dict[int, SSVRenderBufferOpenGL] = {}
         self._ordered_render_buffers: list[SSVRenderBufferOpenGL] = []
-        self._texture_objects: dict[int, SSVTexture] = {}
+        self._texture_objects: dict[int, SSVTextureOpenGL] = {}
         self._renderdoc_api = None
         self._renderdoc_is_capturing = False
         if use_renderdoc_api:
@@ -328,129 +329,34 @@ class SSVRenderOpenGL(SSVRender):
         fb = self._render_buffers[frame_buffer_uid].frame_buffer
         self.update_uniform(frame_buffer_uid, draw_call_uid, "uResolution", (fb.width, fb.height, 0, 0))
 
-    @staticmethod
-    def _determine_texture_shape(data: npt.NDArray,
-                                 override_dtype: Optional[str]) -> tuple[int, int, int, int, Optional[str]]:
-        """
-        Attempts to determine suitable texture parameters given an ndarray. This method returns (0,0,0,0,None) if a
-        suitable format cannot be found.
-
-        :param data: the ndarray to parse.
-        :param override_dtype: optionally, a moderngl dtype string to use instead of the numpy dtype.
-        :return: (components, depth, height, width, dtype)
-        """
-        width, height, depth, components, dtype = (0, 0, 0, 0, None)
-        if len(data.shape) == 1:
-            # Simple 1D single component texture/buffer texture
-            width = data.shape[0]
-            height = 1
-            components = 1
-            depth = 0
-        elif len(data.shape) == 2:
-            if data.shape[1] <= 4:
-                # 1D texture with up to 4 components
-                width, components = data.shape
-                height = 1
-                depth = 0
-            else:
-                # 2D texture with 1 component
-                width, height = data.shape
-                components = 1
-                depth = 0
-        elif len(data.shape) == 3:
-            if data.shape[2] <= 4:
-                # 2D texture with up to 4 components
-                width, height, components = data.shape
-                depth = 0
-            else:
-                # 3D texture with 1 component
-                width, height, depth = data.shape
-                components = 1
-        elif len(data.shape) == 4:
-            if data.shape[3] <= 4:
-                width, height, depth, components = data.shape
-            else:
-                # Too many dimensions
-                log(f"Couldn't convert array with shape: {data.shape} into a texture! Too many dimensions.",
-                    severity=logging.ERROR)
-        else:
-            # Too many dimensions
-            log(f"Couldn't convert array with shape: {data.shape} into a texture! Too many dimensions.",
-                severity=logging.ERROR)
-
-        if override_dtype is not None:
-            if len(override_dtype) != 2:
-                log(f"Invalid dtype '{override_dtype}' provided!", severity=logging.ERROR)
-                return 0, 0, 0, 0, None
-            try:
-                if int(override_dtype[1]) != data.dtype.itemsize:
-                    log(f"Override dtype '{override_dtype}' item size does not match that of the input array "
-                        f"({int(override_dtype[1])} != {data.dtype.itemsize})!", severity=logging.ERROR)
-                    return 0, 0, 0, 0, None
-            except ValueError:
-                log(f"Invalid dtype '{override_dtype}' provided!", severity=logging.ERROR)
-                return 0, 0, 0, 0, None
-            dtype = override_dtype
-
-        conversion = {
-            "b": "u",  # bool
-            "u": "u",  # uint
-            "i": "i",  # int
-            "f": "f",  # float
-            "c": "f",  # complex -> 2  floats
-            "S": "u",  # byte string
-            "V": "u",  # void
-        }
-
-        if dtype is not None and data.dtype.kind in conversion:
-            if not data.dtype.isnative:
-                log(f"Unsupported dtype '{data.dtype}', must match system endianess.", severity=logging.ERROR)
-                return 0, 0, 0, 0, None
-
-            dtype = conversion[data.dtype.kind]
-            if data.dtype.kind == "c" and (
-                    data.dtype.itemsize == 2 or data.dtype.itemsize == 4 or data.dtype.itemsize == 8):
-                # Special case for complex data types
-                if components <= 2:
-                    # Split complex values into two floats
-                    components *= 2
-                    dtype = f"{dtype}{data.dtype.itemsize / 2}"
-                else:
-                    log(f"Unsupported dtype '{data.dtype}', complex types can only be used in 1 or 2 component textures!",
-                        severity=logging.ERROR)
-                    return 0, 0, 0, 0, None
-            elif data.dtype.itemsize == 1 or data.dtype.itemsize == 2 or data.dtype.itemsize == 4:
-                dtype = f"{dtype}{data.dtype.itemsize}"
-            else:
-                log(f"Unsupported dtype '{data.dtype}', must have an itemsize of 1, 2, or 4!", severity=logging.ERROR)
-                return 0, 0, 0, 0, None
-
-        return components, depth, height, width, dtype
-
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
                        rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
-        # Try to determine the shape of the texture to create
-        components, depth, height, width, dtype = self._determine_texture_shape(data, override_dtype)
-
-        if width <= 0 or dtype is None:
-            return
         if texture_uid not in self._texture_objects:
+            # Try to determine the shape of the texture to create
+            components, depth, height, width, dtype = determine_texture_shape(data, override_dtype)
+
+            if width <= 0 or dtype is None:
+                log(f"Couldn't create texture, invalid format", severity=logging.ERROR)
+                return
+
             # Texture doesn't already exist, create a new one
             if uniform_name is None:
                 log(f"Couldn't create texture, uniform_name must not be None", severity=logging.ERROR)
                 return
             try:
-                if depth >= 0:
+                if depth > 1:
                     texture = self.ctx.texture3d((width, height, depth), components, data, dtype=dtype)
                 else:
                     texture = self.ctx.texture((width, height), components, data, dtype=dtype)
-                self._texture_objects[texture_uid] = SSVTexture(texture, uniform_name)
+                self._texture_objects[texture_uid] = SSVTextureOpenGL(texture, uniform_name)
             except Exception as e:
                 log(f"Couldn't create texture: \n{e}", severity=logging.ERROR)
                 return
         else:
             # Update an existing texture
+            # We don't call determine_texture_shape() as we assume shape matches our current texture shape, but just in
+            # case we try except the texture write in case the shape is grossly wrong.
             texture = self._texture_objects[texture_uid]
             if uniform_name is not None:
                 texture.uniform_name = uniform_name
@@ -459,6 +365,60 @@ class SSVRenderOpenGL(SSVRender):
             except Exception as e:
                 log(f"Couldn't update texture: \n{e}", severity=logging.ERROR)
                 return
+
+    def update_texture_sampler(self, texture_uid: int, repeat_x: Optional[bool], repeat_y: Optional[bool],
+                               linear_filtering: Optional[bool], linear_mipmap_filtering: Optional[bool],
+                               anisotropy: Optional[int],
+                               build_mip_maps: bool):
+        if texture_uid not in self._texture_objects:
+            log(f"Couldn't update texture sampling settings for non-existant texture: {texture_uid}",
+                severity=logging.ERROR)
+            return
+
+        texture = self._texture_objects[texture_uid].texture
+        if build_mip_maps:
+            texture.build_mipmaps()
+
+        # Only update parameters which are not None
+        if repeat_x is not None:
+            texture.repeat_x = repeat_x
+        if repeat_y is not None:
+            texture.repeat_y = repeat_y
+
+        if linear_filtering is not None:
+            old_filter = texture.filter
+            if old_filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+                # Texture has mipmaps
+                mipmap = old_filter[0] == moderngl.LINEAR_MIPMAP_LINEAR or old_filter[0] == moderngl.NEAREST_MIPMAP_LINEAR
+                if linear_filtering:
+                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if mipmap else moderngl.LINEAR_MIPMAP_NEAREST,
+                                      moderngl.LINEAR)
+                else:
+                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if mipmap else moderngl.NEAREST_MIPMAP_NEAREST,
+                                      moderngl.NEAREST)
+            else:
+                # Texture doesn't use mipmaps
+                if linear_filtering:
+                    texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                else:
+                    texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+
+        if linear_mipmap_filtering is not None:
+            if texture.filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+                # Texture has mipmaps
+                linear = texture.filter[1] == moderngl.LINEAR
+                if linear:
+                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else moderngl.LINEAR_MIPMAP_NEAREST,
+                                      moderngl.LINEAR)
+                else:
+                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else moderngl.NEAREST_MIPMAP_NEAREST,
+                                      moderngl.NEAREST)
+
+        if anisotropy is not None:
+            if 1 < anisotropy < 16:
+                texture.anisotropy = float(anisotropy)
+            else:
+                log(f"Texture anisotropy must be between 1 and 16. (got: {anisotropy})", logging.WARN)
 
     def delete_texture(self, texture_uid: int):
         if texture_uid in self._texture_objects:
@@ -473,6 +433,8 @@ class SSVRenderOpenGL(SSVRender):
                 fb.frame_buffer.color_attachments[0].use(image_unit)
                 image_unit += 1
         # Bind all the user textures
+        # log(f"Textures: [{', '.join([x.uniform_name for x in self._texture_objects.values()])}]; "
+        #     f"Program uniforms: [{', '.join([x for x in program._members.keys()])}]", severity=logging.INFO)
         for texture in self._texture_objects.values():
             if texture.uniform_name in program:
                 program[texture.uniform_name].value = image_unit

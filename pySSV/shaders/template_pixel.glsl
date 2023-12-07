@@ -32,6 +32,6 @@ in vec2 position;
 
 void main() {
     // Not using the color attribute causes the compiler to strip it and confuses modernGL.
-    fragColor = T_ENTRYPOINT(position * uResolution) + vec4(color, 1.0)*1e-6;
+    fragColor = T_ENTRYPOINT(position * uResolution.xy) + vec4(color, 1.0)*1e-6;
 }
 #endif //SHADER_STAGE_FRAGMENT

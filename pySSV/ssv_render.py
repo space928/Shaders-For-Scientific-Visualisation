@@ -162,6 +162,26 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
+    def update_texture_sampler(self, texture_uid: int, repeat_x: Optional[bool], repeat_y: Optional[bool],
+                               linear_filtering: Optional[bool], linear_mipmap_filtering: Optional[bool],
+                               anisotropy: Optional[int],
+                               build_mip_maps: bool):
+        """
+        Updates a texture's sampling settings. Parameters set to ``None`` are not updated.
+
+        :param texture_uid: the uid of the texture to update.
+        :param repeat_x: whether the texture should repeat or be clamped in the x-axis.
+        :param repeat_y: whether the texture should repeat or be clamped in the y-axis.
+        :param linear_filtering: whether the texture should use nearest neighbour (``False``) or linear (``True``)
+                                 interpolation.
+        :param linear_mipmap_filtering: whether different mipmap levels should blend linearly (``True``) or not
+                                        (``False``).
+        :param anisotropy: the number of anisotropy samples to use. (minimum of 1 = disabled, maximum of 16)
+        :param build_mip_maps: when set to ``True``, immediately builds mipmaps for the texture.
+        """
+        ...
+
+    @abstractmethod
     def delete_texture(self, texture_uid: int):
         """
         Destroys the given texture object.

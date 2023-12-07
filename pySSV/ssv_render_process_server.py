@@ -176,6 +176,9 @@ class SSVRenderProcessServer:
         elif command == "UpdT":
             # Update texture
             self._renderer.update_texture(*command_args)
+        elif command == "UpdS":
+            # Update texture sampler
+            self._renderer.update_texture_sampler(*command_args)
         elif command == "DelT":
             # Delete texture
             self._renderer.delete_texture(*command_args)

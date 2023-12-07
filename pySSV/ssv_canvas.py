@@ -1,8 +1,7 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
-import typing
-from typing import Optional, Any, Union
+from typing import Optional, Any
 import numpy.typing as npt
 import math
 import time
@@ -13,6 +12,7 @@ from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
 from .ssv_logging import log, set_output_stream
 from .ssv_render_buffer import SSVRenderBuffer
+from .ssv_texture import SSVTexture
 
 
 class SSVCanvas:
@@ -76,6 +76,7 @@ class SSVCanvas:
         self.render_buffer_counter = 1
         self.main_camera = SSVCamera()
         self.main_camera.aspect_ratio = size[0]/size[1]
+        self._textures = []
 
     def __del__(self):
         self.stop()
@@ -241,29 +242,31 @@ class SSVCanvas:
         return SSVRenderBuffer(self, self._render_process_client, self._preprocessor, None,
                                render_buffer_name, order, size, dtype, components)
 
-    def texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
-                override_dtype: Optional[str] = None,
-                rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]] = None):
+    def texture(self, data: npt.NDArray, uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
+                override_dtype: Optional[str] = None) -> SSVTexture:
         """
         Creates or updates a texture from the NumPy array provided.
 
-        :param texture_uid: the uid of the texture to create or update.
         :param data: a NumPy array containing the image data to copy to the texture.
-        :param uniform_name: the name of the shader uniform to associate this texture with.
-        :param override_dtype: Optionally, a moderngl override
-        :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
-                     update.
+        :param uniform_name: optionally, the name of the shader uniform to associate this texture with. If ``None`` is
+                             specified, a name is automatically generated in the form 'uTexture{n}'
+        :param force_2d: when set, forces the texture to be treated as 2-dimensional, even if it could be represented
+                         by a 1D texture. This only applies in the ambiguous case where a 2D single component texture
+                         has a height <= 4 (eg: ``np.array([[0.0, 0.1, 0.2], [0.3, 0.4, 0.5], [0.6, 0.7, 0.8]])``),
+                         with this parameter set to ``False``, the array would be converted to a 1D texture with a
+                         width of 3 and 3 components; setting this to ``True`` ensures that it becomes a 3x3 texture
+                         with 1 component.
+        :param force_3d: when set, forces the texture to be treated as 3-dimensional, even if it could be represented
+                         by a 2D texture. See the description of the ``force_2d`` parameter for a full explanation.
+        :param override_dtype: optionally, a moderngl datatype to force on the texture. See
+                               https://moderngl.readthedocs.io/en/latest/topics/texture_formats.html for the full list
+                               of available texture formats.
         """
-        # TODO: Replace with factory for a python object which stores the texture_uid
-        self._render_process_client.update_texture(texture_uid, data, uniform_name, override_dtype, rect)
-
-    def delete_texture(self, texture_uid: int):
-        """
-        Destroys the given texture object.
-
-        :param texture_uid: the uid of the texture to destroy.
-        """
-        self._render_process_client.delete_texture(texture_uid)
+        uniform_name = uniform_name if uniform_name is not None else f"uTexture{len(self._textures)}"
+        texture = SSVTexture(None, self._render_process_client, self._preprocessor, data, uniform_name,
+                             force_2d, force_3d, override_dtype)
+        self._textures.append(texture)
+        return texture
 
     def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
                                   additional_templates=None) -> str:
