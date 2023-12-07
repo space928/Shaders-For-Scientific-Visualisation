@@ -42,18 +42,18 @@ in vec2 position;
 
 #include "TEMPLATE_DATA"
 
-float map(vec3 p) {
+float _map(vec3 p) {
     return T_ENTRYPOINT(p);
 }
 
 // Raymarching loop
-float trace(vec3 o, vec3 r) {
+float _trace(vec3 o, vec3 r) {
     float t = 0.0;
 
     for( int i=0;i<T_RAYMARCH_STEPS;i++ ) {
         vec3 p = o + r * t;
 
-        float d = map(p);
+        float d = _map(p);
 
         if(t > T_RAYMARCH_DISTANCE) {
             t = -1.0;
@@ -66,16 +66,16 @@ float trace(vec3 o, vec3 r) {
 }
 
 // Estimate the normal of the sdf by finite differences
-vec3 estimateNormal(vec3 p) {
+vec3 _estimateNormal(vec3 p) {
     vec2 eps = vec2(EPSILON, 0.);
     return normalize(vec3(
-        map(p + eps.xyy) - map(p - eps.xyy),
-        map(p + eps.yxy) - map(p - eps.yxy),
-        map(p + eps.yyx) - map(p - eps.yyx)
+        _map(p + eps.xyy) - _map(p - eps.xyy),
+        _map(p + eps.yxy) - _map(p - eps.yxy),
+        _map(p + eps.yyx) - _map(p - eps.yyx)
     ));
 }
 
-mat3 rotY(float x)
+mat3 _rotY(float x)
 {
     float sx = sin(x);
     float cx = cos(x);
@@ -85,7 +85,7 @@ mat3 rotY(float x)
 }
 
 // From: https://www.shadertoy.com/view/lslGzl
-vec3 filmicToneMapping(vec3 col)
+vec3 _filmicToneMapping(vec3 col)
 {
 	col = max(vec3(0.), col - vec3(0.002));
 	col = (col * (6.2 * col + .5)) / (col * (6.2 * col + 1.7) + 0.06);
@@ -93,7 +93,7 @@ vec3 filmicToneMapping(vec3 col)
 }
 
 // Fragpos, surface normal, ray direction, ray depth
-vec3 shadeGBuff(vec3 p, vec3 n, vec3 d, float t, vec2 uv)
+vec3 _shadeGBuff(vec3 p, vec3 n, vec3 d, float t, vec2 uv)
 {
     vec3 col = mix(vec3(0.7, 0.8, 1.), vec3(0.3, 0.4, 1.), abs(saturate(d.y*2.)));
     if(t != -1. && t < T_RAYMARCH_DISTANCE)
@@ -114,7 +114,7 @@ vec3 shadeGBuff(vec3 p, vec3 n, vec3 d, float t, vec2 uv)
         col = mix(col, ambient + light, fog);
     }
 
-    return filmicToneMapping(col*0.5)*1.25;
+    return _filmicToneMapping(col*0.5)*1.25;
 }
 
 void main() {
@@ -124,13 +124,13 @@ void main() {
     // Fix any aspect ratio distortion
     uv.x *= uResolution.x / uResolution.y;
 
-    vec3 r = normalize(vec3(uv, 2.0))*rotY(uTime*T_ROTATE_SPEED);
-    vec3 o = vec3(0., 0., -T_CAMERA_DISTANCE)*rotY(uTime*T_ROTATE_SPEED);
-    float t = trace(o, r);
+    vec3 r = normalize(vec3(uv, 2.0))*_rotY(uTime*T_ROTATE_SPEED);
+    vec3 o = vec3(0., 0., -T_CAMERA_DISTANCE)*_rotY(uTime*T_ROTATE_SPEED);
+    float t = _trace(o, r);
     vec3 p = o + r * t;
-    vec3 nrm = estimateNormal(p);
+    vec3 nrm = _estimateNormal(p);
 
-    vec3 col = shadeGBuff(p, nrm, r, t, uv);
+    vec3 col = _shadeGBuff(p, nrm, r, t, uv);
 
     // Not using the color attribute causes the compiler to strip it and confuses modernGL.
     fragColor = vec4(col, 1.) + vec4(color, 1.0)*1e-10;

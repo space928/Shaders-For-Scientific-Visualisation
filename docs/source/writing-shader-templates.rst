@@ -20,7 +20,7 @@ following shader source code is passed in the ``shader()`` method:
 
 .. code-block:: glsl
 
-    #pragma SSV shadertoy frag
+    #pragma SSV pixel frag
     // The entrypoint to the fragment shader
     vec4 frag(vec2 fragPos)
     {
@@ -193,4 +193,31 @@ directive.
 .. option:: --const
 
     When using the 'store_const' action, specifies what value to store.
+
+Input Primitive Directive
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``#pragma SSVTemplate input_primitive``
+
+This directive allows the shader to specify what type of OpenGL input primitive it's expecting. If this directive is not
+specified, the renderer defaults to ``TRIANGLES``.
+
+**Parameters:**
+
+.. option:: primitive_type
+
+    The primitive type for the renderer to dispatch the shader with. Accepts one of the following options:
+
+    1. ``POINTS`` treat the input vertices as points.
+    2. ``LINES`` treat the input vertices as an array of line segments; each line consumes 2 vertices.
+    3. ``LINE_LOOP``
+    4. ``LINE_STRIP`` (unsupported) treat the input vertices as a line strip; each line consumes 1 vertex.
+    5. ``TRIANGLES`` (default) treat the input vertices as a an array of triangles; each triangle consumes 3 vertices.
+    6. ``TRIANGLE_STRIP``
+    7. ``TRIANGLE_FAN``
+    8. ``LINES_ADJACENCY``
+    9. ``LINE_STRIP_ADJACENCY``
+    10. ``TRIANGLES_ADJACENCY``
+    11. ``TRIANGLE_STRIP_ADJACENCY``
+    12. ``PATCHES``
 

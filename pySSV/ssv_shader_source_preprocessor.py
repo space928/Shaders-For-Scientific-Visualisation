@@ -21,6 +21,9 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
         self.will_enable_line_directive = False
 
     def on_file_open(self, is_system_include, includepath):
+        """
+        *Used internally by the parser.*
+        """
         if os.path.isfile(includepath):
             return super().on_file_open(is_system_include, includepath)
 
@@ -42,6 +45,9 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
             raise pcpp.OutputDirective(pcpp.Action.IgnoreAndPassThrough)
 
     def on_directive_unknown(self, directive, toks, ifpassthru, precedingtoks):
+        """
+        *Used internally by the parser.*
+        """
         if directive.value == "pragma":
             # This is a special pragma directive which allows #line directives to be suppressed. This is needed to
             # ensure that the #line directive can appear first in the shader.
@@ -63,6 +69,9 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
         super().on_directive_unknown(directive, toks, ifpassthru, precedingtoks)
 
     def token(self):
+        """
+        *Used internally by the parser.*
+        """
         tok = super().token()
 
         # Macro expansion happens when the chunk is collapsed, so it should be a good time to re-enable #line
@@ -74,6 +83,9 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
         return tok
 
     def on_comment(self, tok):
+        """
+        *Used internally by the parser.*
+        """
         # Remove any comments from templates, but keep user comments
         if tok.source == "TEMPLATE_DATA":
             return True
@@ -81,5 +93,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
             return False
 
     def on_error(self, file, line, msg):
+        """
+        *Used internally by the parser.*
+        """
         log(f"[ShaderPreprocessor] [{file}:{line}] {msg}", severity=logging.ERROR)
         self.return_code += 1
