@@ -19,8 +19,9 @@ class SSVShaderPreprocessor:
     to compile shaders for each pipeline stage.
     """
 
-    def __init__(self, gl_version: str):
+    def __init__(self, gl_version: str, supports_line_directives: bool):
         self._gl_version = gl_version
+        self._supports_line_directives = supports_line_directives
         self._dynamic_uniforms = {}
         self._template_parser = SSVTemplatePragmaParser()
         self._shader_parser = SSVShaderPragmaParser()
@@ -79,8 +80,8 @@ class SSVShaderPreprocessor:
 
         return parser
 
-    def _make_defines(self, template_args: argparse.Namespace, extra_defines: Optional[dict[str, str]],
-                      compiler_extensions: Optional[list[str]]) -> list[tuple[str, str]]:
+    def _make_defines(self, template_args: argparse.Namespace, template_argparse: argparse.ArgumentParser,
+                      extra_defines: Optional[dict[str, str]], compiler_extensions: Optional[list[str]]) -> list[tuple[str, str]]:
         """
         Converts templates arguments from an argparse namespace to a list of tuples::
 
@@ -90,6 +91,7 @@ class SSVShaderPreprocessor:
             (_foo='False') -> <nothing>
 
         :param template_args: an argparse Namespace object.
+        :param template_argparse: the argparse instance used to parse the arguments.
         :param extra_defines: extra preprocessor defines to be enabled globally.
         :param compiler_extensions: a list of GLSL extensions required by this shader
                                     (eg: ``GL_EXT_control_flow_attributes``)
@@ -100,6 +102,11 @@ class SSVShaderPreprocessor:
             if issubclass(type(val), list):
                 # Hack to support arguments containing spaces
                 val = " ".join(val)
+            if issubclass(type(val), bool):
+                if val:
+                    val = "1"
+                else:
+                    continue
             if val.lower() == "false":
                 # Don't define  defines which are set to false
                 continue
@@ -108,6 +115,8 @@ class SSVShaderPreprocessor:
 
             name = f"T_{(arg[1:] if arg[0] == '_' else arg).upper()}"
             defines.append((name, val))
+            if template_argparse.get_default(arg) == val:
+                defines.append((f"{name}_ISDEFAULT", "1"))
 
         defines.append(("SSV_SHADER", "1"))
         defines.append(("_GL_VERSION", f"#version {self._gl_version}"))
@@ -117,6 +126,8 @@ class SSVShaderPreprocessor:
         if extra_defines is not None and len(extra_defines) > 0:
             for define, value in extra_defines.items():
                 defines.append((define, value))
+        if self._supports_line_directives:
+            defines.append(("_GL_SUPPORTS_LINE_DIRECTIVES", "1"))
 
         defines.append(("_DYNAMIC_UNIFORMS", "\n".join(self._dynamic_uniforms.values())))
 
@@ -215,7 +226,7 @@ class SSVShaderPreprocessor:
         template_argparse = self._make_argparse(template_metadata)
         # Parse the template_info
         parsed_args = template_argparse.parse_args(template_info.args)
-        defines = self._make_defines(parsed_args, shader_defines, compiler_extensions)
+        defines = self._make_defines(parsed_args, template_argparse, shader_defines, compiler_extensions)
 
         stages = []
         for template_data in template_metadata.get("stage", []):

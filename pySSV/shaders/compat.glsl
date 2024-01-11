@@ -7,11 +7,13 @@
 // directive is the first in the file.
 #pragma PreventLine true
 _GL_VERSION
-#extension GL_ARB_shading_language_include : require
 #ifdef _GL_ADDITIONAL_EXTENSIONS
 _GL_ADDITIONAL_EXTENSIONS
 #endif
+#ifdef _GL_SUPPORTS_LINE_DIRECTIVES
+#extension GL_ARB_shading_language_include : require
 #pragma PreventLine false
+#endif // _GL_SUPPORTS_LINE_DIRECTIVES
 #endif // _GL_VERSION
 
 #ifdef _GL_PRECISION

@@ -3,7 +3,7 @@
 import logging
 from multiprocessing import Process, Queue
 from queue import Empty
-from threading import Thread
+from threading import Thread, Lock, Event
 from typing import Callable, NewType, Optional, Any, Union
 
 import numpy as np
@@ -16,6 +16,37 @@ from .ssv_render_process_server import SSVRenderProcessServer
 
 OnRenderObserverDelegate = NewType("OnRenderObserverDelegate", Callable[[bytes], None])
 OnLogObserverDelegate = NewType("OnLogObserverDelegate", Callable[[str], None])
+
+
+class Future:
+    """
+    Represents a lightweight, low-level Event-backed future.
+
+    For more complex async requirements, the asyncio library is probably a better idea.
+    """
+    is_available: Event
+    result: Any
+
+    def __init__(self):
+        self.is_available = Event()
+
+    def set_result(self, val):
+        """
+        Sets the result of the Future object and notifies objects waiting for the result.
+
+        :param val: the result to set.
+        """
+        self.result = val
+        self.is_available.set()
+
+    def wait_result(self):
+        """
+        Waits synchronously until the result is available and then returns it.
+
+        :return: the awaited result.
+        """
+        self.is_available.wait()
+        return self.result
 
 
 class SSVRenderProcessClient:
@@ -34,6 +65,9 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx = Queue()
         self._command_queue_rx = Queue()
+        self._query_futures: dict[int, Future] = dict()
+        self._query_future_id_counter = 0
+        self._query_futures_lock = Lock()
         self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True)
         self._rx_thread.start()
         self._on_render_observers: list[OnRenderObserverDelegate] = []
@@ -68,9 +102,33 @@ class SSVRenderProcessClient:
                 # Render server stopping
                 log("Render server shut down.", severity=logging.INFO)
                 self._is_alive = False
+            elif command == "ARes":
+                # Async result
+                with self._query_futures_lock:
+                    if command_args[0] in self._query_futures:
+                        res = command_args[1:] if len(command_args) > 2 else command_args[1]
+                        self._query_futures[command_args[0]].set_result(res)
             else:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
+
+    def __wait_async_query(self, command: str, *args) -> Any:
+        """
+        Runs a command which returns an async result and waits for its result to be returned.
+
+        :param command: the command to run.
+        :param args: any additional args to pass to the command.
+        :return: the result of the async query command.
+        """
+        # While dictionaries are atomic in python, it's still a good idea to use a lock
+        with self._query_futures_lock:
+            result = Future()
+            query_id = self._query_future_id_counter
+            self._query_future_id_counter += 1
+            self._query_futures[query_id] = result
+
+        self._command_queue_tx.put((command, query_id, *args))
+        return result.wait_result()
 
     @property
     def is_alive(self):
@@ -198,7 +256,8 @@ class SSVRenderProcessClient:
 
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       treat_as_normalized_integer: bool):
         """
         Creates or updates a texture from the NumPy array provided.
 
@@ -208,9 +267,14 @@ class SSVRenderProcessClient:
         :param override_dtype: Optionally, a moderngl override
         :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
                      update.
+        :param treat_as_normalized_integer: when enabled, integer types (singed/unsigned) are treated as normalized
+                                            integers by OpenGL, such that when the texture is sampled values in the
+                                            texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
+                                            https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
         """
         # TODO: Optimise data transport by using shared buffers
-        self._command_queue_tx.put(("UpdT", texture_uid, data, uniform_name, override_dtype, rect))
+        self._command_queue_tx.put(("UpdT", texture_uid, data, uniform_name, override_dtype, rect,
+                                    treat_as_normalized_integer))
 
     def update_texture_sampler(self, texture_uid: int, repeat_x: Optional[bool] = None, repeat_y: Optional[bool] = None,
                                linear_filtering: Optional[bool] = None, linear_mipmap_filtering: Optional[bool] = None,
@@ -270,6 +334,18 @@ class SSVRenderProcessClient:
         :param filename: optionally, the filename and path to save the capture with.
         """
         self._command_queue_tx.put(("RdCp", filename))
+
+    def get_context_info(self) -> dict[str, str]:
+        """
+        Returns the OpenGL context information.
+        """
+        return self.__wait_async_query("GtCt")
+
+    def get_supported_extensions(self) -> set[str]:
+        """
+        Gets the set of supported OpenGL shader compiler extensions.
+        """
+        return self.__wait_async_query("GtEx")
 
     def dbg_log_context_info(self, full=False):
         """

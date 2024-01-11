@@ -13,13 +13,18 @@ if TYPE_CHECKING:
 
 
 def determine_texture_shape(data: npt.NDArray,
-                            override_dtype: Optional[str]) -> tuple[int, int, int, int, Optional[str]]:
+                            override_dtype: Optional[str],
+                            treat_as_normalized_integer: bool = True) -> tuple[int, int, int, int, Optional[str]]:
     """
     Attempts to determine suitable texture parameters given an ndarray. This method returns (0,0,0,0,None) if a
     suitable format cannot be found.
 
     :param data: the ndarray to parse.
     :param override_dtype: optionally, a moderngl dtype string to use instead of the numpy dtype.
+    :param treat_as_normalized_integer: when enabled, integer types (singed/unsigned) are treated as normalized
+                                        integers by OpenGL, such that when the texture is sampled values in the
+                                        texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
+                                        https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
     :return: (components, depth, height, width, dtype)
     """
     width, height, depth, components, dtype = (0, 0, 0, 0, None)
@@ -108,6 +113,11 @@ def determine_texture_shape(data: npt.NDArray,
             log(f"Unsupported dtype '{data.dtype}', must have an itemsize of 1, 2, or 4!", severity=logging.ERROR)
             return 0, 0, 0, 0, None
 
+        if treat_as_normalized_integer \
+                and (data.dtype.itemsize == 1 or data.dtype.itemsize == 2) \
+                and (dtype == "u" or dtype == "i"):
+            dtype = "n" + dtype
+
     return components, depth, height, width, dtype
 
 
@@ -119,7 +129,7 @@ class SSVTexture:
     def __init__(self, texture_uid: Optional[int], render_process_client: SSVRenderProcessClient,
                  preprocessor: SSVShaderPreprocessor,
                  data: npt.NDArray, uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
-                 override_dtype: Optional[str] = None):
+                 override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True):
         """
         *Used Internally*
 
@@ -139,6 +149,10 @@ class SSVTexture:
         :param force_3d: when set, forces the texture to be treated as 3-dimensional, even if it could be represented
                          by a 2D texture. See the description of the ``force_2d`` parameter for a full explanation.
         :param override_dtype: optionally, a moderngl datatype to force on the texture.
+        :param treat_as_normalized_integer: when enabled, integer types (singed/unsigned) are treated as normalized
+                                            integers by OpenGL, such that when the texture is sampled values in the
+                                            texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
+                                            https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
         """
         self._texture_uid = id(self) if texture_uid is None else texture_uid
         self._render_process_client = render_process_client
@@ -149,10 +163,22 @@ class SSVTexture:
         if force_3d and len(data.shape) == 3 and data.shape[2] <= 4:
             data = data.reshape((*data.shape, 1))
 
-        self._components, self._depth, self._height, self._width, self._dtype = determine_texture_shape(data, override_dtype)
+        (self._components, self._depth, self._height, self._width, self._dtype) = \
+            determine_texture_shape(data, override_dtype, treat_as_normalized_integer)
 
-        self._render_process_client.update_texture(self._texture_uid, data, uniform_name, override_dtype, None)
-        self._preprocessor.add_dynamic_uniform(self._uniform_name, "sampler3D" if self._depth > 1 else "sampler2D")
+        sampler_prefix = ""
+        if not treat_as_normalized_integer:
+            if data.dtype.kind in {"f", "c"}:
+                sampler_prefix = ""
+            elif data.dtype.kind in {"b", "u", "S", "V"}:
+                sampler_prefix = "u"
+            else:
+                sampler_prefix = "i"
+        sampler_type = f"{sampler_prefix}sampler3D" if self._depth > 1 else f"{sampler_prefix}sampler2D"
+
+        self._render_process_client.update_texture(self._texture_uid, data, uniform_name, override_dtype, None,
+                                                   treat_as_normalized_integer)
+        self._preprocessor.add_dynamic_uniform(self._uniform_name, sampler_type)
 
     @property
     def texture_uid(self) -> int:

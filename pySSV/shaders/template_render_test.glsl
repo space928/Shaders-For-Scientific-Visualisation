@@ -11,10 +11,10 @@
 #include "global_uniforms.glsl"
 
 #ifdef SHADER_STAGE_VERTEX
-in vec2 in_vert;
-in vec3 in_color;
-out vec3 color;
-out vec2 position;
+layout(location = 0) in vec2 in_vert;
+layout(location = 1) in vec3 in_color;
+layout(location = 0) out vec3 color;
+layout(location = 1) out vec2 position;
 void main() {
     gl_Position = vec4(in_vert, 0.0, 1.0);
     color = in_color;
@@ -25,8 +25,8 @@ void main() {
 
 #ifdef SHADER_STAGE_FRAGMENT
 out vec4 fragColor;
-in vec3 color;
-in vec2 position;
+layout(location = 0) in vec3 color;
+layout(location = 1) in vec2 position;
 
 vec4 mainImage(in vec2 fragCoord)
 {
@@ -40,7 +40,6 @@ vec4 mainImage(in vec2 fragCoord)
 }
 
 void main() {
-    // Not using the color attribute causes the compiler to strip it and confuses modernGL.
-    fragColor = mainImage(position * iResolution.xy) + vec4(color, 1.0)*1e-6;
+    fragColor = mainImage(position * iResolution.xy);
 }
 #endif //SHADER_STAGE_FRAGMENT
