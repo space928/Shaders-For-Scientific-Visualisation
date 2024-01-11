@@ -69,6 +69,10 @@ export class SSVRenderView extends DOMWidgetView {
 
   render() {
     // Render HTML
+    this.el.classList.add("ssv-colors");
+    if(getComputedStyle(document.documentElement).getPropertyValue("--colab-primary-surface-color").length > 0)
+      this.el.classList.add("ssv-colab-support");
+
     this.el.classList.add("ssv-render-widget");
 
     switch (this.model.get("streaming_mode")) {
