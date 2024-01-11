@@ -1,12 +1,12 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
-from typing import Optional, Any
+from typing import Optional, Any, Union
 import numpy.typing as npt
 import math
 import time
 
-from .ssv_camera import SSVCamera, MoveDir
+from .ssv_camera import SSVOrbitCameraController, SSVLookCameraController, MoveDir
 from .ssv_render_process_client import SSVRenderProcessClient
 from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
@@ -21,7 +21,8 @@ class SSVCanvas:
     """
 
     def __init__(self, size: Optional[tuple[int, int]], backend: str = "opengl", standalone: bool = False,
-                 target_framerate: int = 60, use_renderdoc: bool = False):
+                 target_framerate: int = 60, use_renderdoc: bool = False,
+                 supports_line_directives: Optional[bool] = None):
         """
         Creates a new SSV Canvas object which manages the graphics context and render widget/window.
 
@@ -32,6 +33,10 @@ class SSVCanvas:
         :param target_framerate: the default framerate to target when running.
         :param use_renderdoc: optionally, an instance of the Renderdoc in-app api to provide support for frame
                                capturing and analysis in renderdoc.
+        :param supports_line_directives: whether the shader compiler supports ``#line`` directives (Nvidia GPUs only).
+                                         Set to ``None`` for automatic detection. If you get
+                                         'extension not supported: GL_ARB_shading_language_include' errors, set this to
+                                         ``False``.
         """
         if size is None:
             size = (640, 480)
@@ -56,13 +61,17 @@ class SSVCanvas:
             self.widget.on_stop(self.__on_stop)
             self.widget.on_key(self.__on_key)
             self.widget.on_click(self.__on_click)
+            self.widget.on_mouse_wheel(self.__on_mouse_wheel)
             if self._use_renderdoc:
                 self.widget.on_renderdoc_capture(self.__on_renderdoc_capture)
             set_output_stream(SSVRenderWidgetLogIO(self.widget))
             # set_output_stream(sys.stdout)
-        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 3,
+        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 5,
                                                              self._use_renderdoc)
-        self._preprocessor = SSVShaderPreprocessor(gl_version="420")
+        if supports_line_directives is None:
+            supported_extensions = self._render_process_client.get_supported_extensions()
+            supports_line_directives = "GL_ARB_shading_language_include" in supported_extensions
+        self._preprocessor = SSVShaderPreprocessor(gl_version="420", supports_line_directives=supports_line_directives)
 
         self._mouse_pos = [0, 0]
         self._mouse_down = False
@@ -74,8 +83,8 @@ class SSVCanvas:
                                                    0, "main_render_buffer",
                                                    999999, size, "f1", 4)
         self.render_buffer_counter = 1
-        self.main_camera = SSVCamera()
-        self.main_camera.aspect_ratio = size[0]/size[1]
+        self.main_camera = SSVOrbitCameraController()
+        self.main_camera.aspect_ratio = size[1]/size[0]
         self._textures = []
 
     def __del__(self):
@@ -84,8 +93,8 @@ class SSVCanvas:
 
     def __on_render(self, stream_data):
         self.widget.stream_data = stream_data
-        self.main_camera.position[2] = math.sin(time.time())
-        self._render_process_client.update_uniform(None, None, "uViewMat", self.main_camera.view_matrix)
+        # self.main_camera.position[2] = math.sin(time.time())
+        # self._render_process_client.update_uniform(None, None, "uViewMat", self.main_camera.view_matrix)
 
     def __on_heartbeat(self):
         self._render_process_client.send_heartbeat()
@@ -117,6 +126,10 @@ class SSVCanvas:
     def __on_renderdoc_capture(self):
         log("Capturing frame...", severity=logging.INFO)
         self._render_process_client.renderdoc_capture_frame(None)
+
+    def __on_mouse_wheel(self, value: float):
+        self.main_camera.zoom(value * 0.05)
+        self._render_process_client.update_uniform(None, None, "uViewMat", self.main_camera.view_matrix)
 
     def __on_mouse_x_updated(self, x):
         self._mouse_pos[0] = x.new
@@ -243,7 +256,7 @@ class SSVCanvas:
                                render_buffer_name, order, size, dtype, components)
 
     def texture(self, data: npt.NDArray, uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
-                override_dtype: Optional[str] = None) -> SSVTexture:
+                override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True) -> SSVTexture:
         """
         Creates or updates a texture from the NumPy array provided.
 
@@ -261,10 +274,14 @@ class SSVCanvas:
         :param override_dtype: optionally, a moderngl datatype to force on the texture. See
                                https://moderngl.readthedocs.io/en/latest/topics/texture_formats.html for the full list
                                of available texture formats.
+        :param treat_as_normalized_integer: when enabled, integer types (singed/unsigned) are treated as normalized
+                                            integers by OpenGL, such that when the texture is sampled values in the
+                                            texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
+                                            https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
         """
         uniform_name = uniform_name if uniform_name is not None else f"uTexture{len(self._textures)}"
         texture = SSVTexture(None, self._render_process_client, self._preprocessor, data, uniform_name,
-                             force_2d, force_3d, override_dtype)
+                             force_2d, force_3d, override_dtype, treat_as_normalized_integer)
         self._textures.append(texture)
         return texture
 
@@ -298,7 +315,8 @@ class SSVCanvas:
     def dbg_preprocess_shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
                               additional_templates: Optional[list[str]] = None,
                               shader_defines: Optional[dict[str, str]] = None,
-                              compiler_extensions: Optional[list[str]] = None) -> dict[str, str]:
+                              compiler_extensions: Optional[list[str]] = None,
+                              pretty_print: bool = True) -> Union[str, dict[str, str]]:
         """
         Runs the preprocessor on a shader and returns the results. Useful for debugging shaders.
 
@@ -314,9 +332,33 @@ class SSVCanvas:
         :param shader_defines: extra preprocessor defines to be enabled globally.
         :param compiler_extensions: a list of GLSL extensions required by this shader
                                     (eg: ``GL_EXT_control_flow_attributes``)
+        :param pretty_print: when enabled returns a single string containing all the preprocessed shaders
         """
-        return self._preprocessor.preprocess(shader_source, None, additional_template_directory,
-                                             additional_templates, shader_defines, compiler_extensions)
+
+        shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
+                                                additional_templates, shader_defines, compiler_extensions)
+        if not pretty_print:
+            return shaders
+
+        from ._version import VERSION
+
+        # Primitive type is always defined but often set to None (so that it defaults to triangles); in this case it
+        # isn't relevant to show, so we strip it.
+        if "primitive_type" in shaders and shaders["primitive_type"] is None:
+            del shaders["primitive_type"]
+
+        stages = shaders.keys()
+        shaders = shaders.values()
+        stages = [f"////////////////////////////////////////\n"
+                  f"// {stage.upper():^34} //\n"
+                  f"////////////////////////////////////////\n\n" for stage in stages]
+        shaders = [f"{shader}\n\n\n" for shader in shaders]
+        preproc_src = f"/************************************************************\n" \
+                      f" * {f'pySSV Shader Preprocessor version: {VERSION}':^56} *\n" \
+                      f" ************************************************************/\n\n"
+        preproc_src += "".join([str(s) for shader in zip(stages, shaders) for s in shader])
+
+        return preproc_src
 
     def dbg_render_test(self):
         """

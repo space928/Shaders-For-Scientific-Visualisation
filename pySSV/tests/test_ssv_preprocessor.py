@@ -19,7 +19,7 @@ def test_ssv_argparse():
 
 
 def test_ssv_preprocessor():
-    preproc = SSVShaderPreprocessor(gl_version="420")
+    preproc = SSVShaderPreprocessor(gl_version="420", supports_line_directives=True)
     proc_shaders = preproc.preprocess(test_shader, "test_shader.glsl", additional_templates=[test_template])
     assert len(proc_shaders) == 2
     assert "vertex_shader" in proc_shaders

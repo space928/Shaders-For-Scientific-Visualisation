@@ -36,7 +36,7 @@ def _jupyter_nbextension_paths():
 # Various factory methods
 
 def canvas(size: Optional[tuple[int, int]] = (640, 480), backend: str = "opengl", standalone: bool = False,
-           target_framerate: int = 60, use_renderdoc: bool = False):
+           target_framerate: int = 60, use_renderdoc: bool = False, supports_line_directives: Optional[bool] = None):
     """
     Creates a new ``SSVCanvas`` which contains the render widget and manages the render context.
 
@@ -47,6 +47,10 @@ def canvas(size: Optional[tuple[int, int]] = (640, 480), backend: str = "opengl"
     :param target_framerate: the default framerate to target when running.
     :param use_renderdoc: optionally, an instance of the Renderdoc in-app api to provide support for frame
                            capturing and analysis in renderdoc.
+    :param supports_line_directives: whether the shader compiler supports ``#line`` directives (Nvidia GPUs only). Set
+                                     to ``None`` for automatic detection. If you get
+                                     'extension not supported: GL_ARB_shading_language_include' errors, set this to
+                                     ``False``.
     """
 
-    return SSVCanvas(size, backend, standalone, target_framerate, use_renderdoc)
+    return SSVCanvas(size, backend, standalone, target_framerate, use_renderdoc, supports_line_directives)

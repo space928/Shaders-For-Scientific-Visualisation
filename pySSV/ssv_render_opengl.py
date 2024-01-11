@@ -176,6 +176,12 @@ class SSVRenderOpenGL(SSVRender):
             extensions = pformat(self.ctx.extensions, indent=4)
             log(f"GL Extensions: \n{extensions}", severity=logging.INFO)
 
+    def get_context_info(self) -> dict[str, str]:
+        return self.ctx.info
+
+    def get_supported_extensions(self) -> set[str]:
+        return self.ctx.extensions
+
     def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
                             components: int = 4, dtype: str = "f1"):
         # TODO: It might make sense to decouple the moderngl dtype from our dtype if this is meant to be used by an
@@ -320,7 +326,9 @@ class SSVRenderOpenGL(SSVRender):
                                                                *draw_call.vertex_attributes,
                                                                index_buffer=draw_call.index_buffer)
             except KeyError as e:
-                log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader!", severity=logging.ERROR)
+                log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader! Check that the attribute "
+                    f"is defined in the vertex shader and that it's being used by the shader, otherwise the shader "
+                    f"compiler may have optimised it out.", severity=logging.ERROR)
                 return
         except moderngl.Error as e:
             log(e, severity=logging.ERROR)
@@ -331,10 +339,12 @@ class SSVRenderOpenGL(SSVRender):
 
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       treat_as_normalized_integer: bool):
         if texture_uid not in self._texture_objects:
             # Try to determine the shape of the texture to create
-            components, depth, height, width, dtype = determine_texture_shape(data, override_dtype)
+            components, depth, height, width, dtype = determine_texture_shape(data, override_dtype,
+                                                                              treat_as_normalized_integer)
 
             if width <= 0 or dtype is None:
                 log(f"Couldn't create texture, invalid format", severity=logging.ERROR)
@@ -346,9 +356,9 @@ class SSVRenderOpenGL(SSVRender):
                 return
             try:
                 if depth > 1:
-                    texture = self.ctx.texture3d((width, height, depth), components, data, dtype=dtype)
+                    texture = self.ctx.texture3d((depth, height, width), components, data, dtype=dtype)
                 else:
-                    texture = self.ctx.texture((width, height), components, data, dtype=dtype)
+                    texture = self.ctx.texture((height, width), components, data, dtype=dtype)
                 self._texture_objects[texture_uid] = SSVTextureOpenGL(texture, uniform_name)
             except Exception as e:
                 log(f"Couldn't create texture: \n{e}", severity=logging.ERROR)

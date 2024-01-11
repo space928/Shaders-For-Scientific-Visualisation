@@ -381,3 +381,145 @@ Example
 
     #pragma SSV render_test
 
+
+
+Geometry Shader Template
+------------------------
+
+``#pragma SSV geometry``
+
+.. c:namespace:: geometry
+
+This template exposes an entrypoint to a vertex shader and an entrypoint to a geometry shader. It treats input vertices
+as points which are processed by the user defined vertex shader and can then be turned into triangle primitives by the
+user defined geometry shader.
+
+Entrypoint Signature
+^^^^^^^^^^^^^^^^^^^^
+
+Vertex Stage
+____________
+
+.. c:function:: VertexOutput vert()
+
+    Where ``VertexOutput`` is substituted for the value of ``--vertex_output_struct``.
+
+:returns: a <VertexOutput> struct containing the transformed vertex.
+
+
+If the ``--vertex_output_struct`` argument isn't set then the ``<VertexOutput>`` struct is as follows:
+
+.. c:struct:: DefaultVertexOutput
+
+    .. c:var:: vec4 position
+    .. c:var:: vec4 color
+    .. c:var:: float size
+
+        The size of the sprite representing the point.
+
+If the ``--custom_vertex_input`` flag isn't specified then the vertex shader is expected to take input from the
+following vertex attributes:
+
+.. c:var:: vec4 in_vert
+.. c:var:: vec4 in_color
+
+Geometry Stage
+______________
+
+.. c:function:: void geo(VertexOutput i)
+
+    :param i: the struct containing the processed vertex data
+
+
+The geometry function is expected to write to these output variables before each call to ``EmitVertex()``:
+
+.. c:var:: vec4 gl_Position
+
+    The transformed (clip space) position of the vertex to emit.
+
+.. c:var:: vec4 out_color
+
+    The final colour of the vertex to be emitted.
+
+The geometry function is responsible for calling ``EmitVertex()`` and ``EndPrimitive()`` as needed and must not emit
+more vertices in a single invocation than what is specified in ``--geo_max_vertices`` (``default=4``).
+
+Template Arguments
+^^^^^^^^^^^^^^^^^^
+
+.. option:: entrypoint_vert
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to vertex the shader.
+
+.. option:: entrypoint_geo
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to geometry the shader.
+
+.. option:: --vertex_output_struct
+
+    *default*: ``DefaultVertexOutput``
+
+    *type*: ``float``
+
+    The name of the struct containing data to be transferred from the vertex stage to the geometry stage.
+
+.. option:: --geo_max_vertices
+
+    *default*: ``4``
+
+    *type*: ``const int``
+
+    The maximum number of vertices which can be output be the geometry stage per input vertex. Must be a constant.
+
+.. option:: --custom_vertex_input
+
+    *type*: ``flag``
+
+    When this flag is passed, the default vertex input attributes are not created and must be declared by the user.
+
+Example
+^^^^^^^
+
+.. code-block:: glsl
+
+    #pragma SSV geometry mainPoint mainGeo
+    #ifdef SHADER_STAGE_VERTEX
+    DefaultVertexOutput mainPoint()
+    {
+        DefaultVertexOutput o;
+        // Transform the points using the camera matrices
+        vec4 pos = vec4(in_vert, 1.0);
+        pos = uViewMat * pos;
+        pos = uProjMat * pos;
+        o.position = pos;
+        o.color = vec4(in_color, 1.);
+        o.size = 10.0/uResolution.x;
+        return o;
+    }
+    #endif // SHADER_STAGE_VERTEX
+    #ifdef SHADER_STAGE_GEOMETRY
+    void mainGeo(DefaultVertexOutput i) {
+        // Generate a quad for each point
+        vec4 position = i.position;
+        float size = i.size;
+        out_color = i.color;
+        vec4 aspect_ratio = vec4(1., uResolution.x/uResolution.y, 1., 1.);
+        gl_Position = position + size * vec4(-1., -1., 0.0, 0.0) * aspect_ratio;
+        EmitVertex();
+        gl_Position = position + size * vec4(1., -1., 0.0, 0.0) * aspect_ratio;
+        EmitVertex();
+        gl_Position = position + size * vec4(-1., 1., 0.0, 0.0) * aspect_ratio;
+        EmitVertex();
+        gl_Position = position + size * vec4(1., 1., 0.0, 0.0) * aspect_ratio;
+        EmitVertex();
+        EndPrimitive();
+    }
+    #endif // SHADER_STAGE_GEOMETRY

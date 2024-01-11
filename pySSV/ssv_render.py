@@ -68,6 +68,20 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
+    def get_context_info(self) -> dict[str, str]:
+        """
+        Returns the OpenGL context information.
+        """
+        ...
+
+    @abstractmethod
+    def get_supported_extensions(self) -> set[str]:
+        """
+        Gets the set of supported OpenGL shader compiler extensions.
+        """
+        ...
+
+    @abstractmethod
     def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
                             components: int = 4, dtype: str = "f1"):
         """
@@ -148,7 +162,8 @@ class SSVRender(ABC):
     @abstractmethod
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]]):
+                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       treat_as_normalized_integer: bool):
         """
         Creates or updates a texture from the NumPy array provided.
 
@@ -158,6 +173,10 @@ class SSVRender(ABC):
         :param override_dtype: optionally, a moderngl override
         :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
                      update.
+        :param treat_as_normalized_integer: when enabled, integer types (singed/unsigned) are treated as normalized
+                                            integers by OpenGL, such that when the texture is sampled values in the
+                                            texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
+                                            https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
         """
         ...
 

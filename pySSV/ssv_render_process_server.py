@@ -134,6 +134,10 @@ class SSVRenderProcessServer:
                         self.__shutdown("requested by client")
                         return
 
+    def __send_async_result(self, query_id, *args):
+        # Send an async result back to the client with the client's request id
+        self._command_queue_tx.put(("ARes", query_id, *args))
+
     def __parse_render_command(self, timeout):
         try:
             command, *command_args = self._command_queue_rx.get(block=True, timeout=timeout)
@@ -194,6 +198,14 @@ class SSVRenderProcessServer:
         elif command == "LogT":
             # Log frame times
             self.log_frame_timing = command_args[0]
+        elif command == "GtCt":
+            # Get context info
+            ctx = self._renderer.get_context_info()
+            self.__send_async_result(command_args[0], ctx)
+        elif command == "GtEx":
+            # Get supported extensions
+            ext = self._renderer.get_supported_extensions()
+            self.__send_async_result(command_args[0], ext)
         elif command == "DbRT":
             # Debug Render Test
             pass

@@ -61,6 +61,7 @@ export class SSVRenderView extends DOMWidgetView {
   private _status_resolution_element: HTMLSpanElement | null = null;
   private _log_button_element: HTMLButtonElement | null = null;
   private _log_element: HTMLElement | null = null;
+  private _focussed: boolean = false;
 
   initialize(parameters: WidgetView.IInitializeParameters) {
     super.initialize(parameters);
@@ -68,6 +69,10 @@ export class SSVRenderView extends DOMWidgetView {
 
   render() {
     // Render HTML
+    this.el.classList.add("ssv-colors");
+    if(getComputedStyle(document.documentElement).getPropertyValue("--colab-primary-surface-color").length > 0)
+      this.el.classList.add("ssv-colab-support");
+
     this.el.classList.add("ssv-render-widget");
 
     switch (this.model.get("streaming_mode")) {
@@ -98,51 +103,106 @@ export class SSVRenderView extends DOMWidgetView {
       }, 250);
 
       //let mousePos = { x: 0, y: 0 };
-      this._stream_img_element.addEventListener(
-        "mousemove",
-        (event: MouseEvent) => {
-          /*mousePos = {
-            x: event.clientX,// / target.width,
-            y: event.clientY,// / target.height
-          };*/
-
-          if (event?.target == null || !(event.target instanceof HTMLElement))
-            return;
-
-          const rect = event.target.getBoundingClientRect();
-          this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
-          this.model.set("mouse_pos_y", Math.round(rect.height - (event.clientY - rect.top)));
-          this.model.save_changes();
-        }
-      );
-      this._stream_img_element.addEventListener(
-        "mousedown",
-        (event: MouseEvent) => {
-          this.send({"mousedown": 0});
-        }
-      );
-      this._stream_img_element.addEventListener(
-        "mouseup",
-        (event: MouseEvent) => {
-          this.send({"mouseup": 0});
-        }
-      );
-      this._stream_img_element.addEventListener(
-        "keydown",
-        (event: KeyboardEvent) => {
-          this.send({"keydown": event.key});
-        }
-      );
-      this._stream_img_element.addEventListener(
-        "keyup",
-        (event: KeyboardEvent) => {
-          this.send({"keyup": event.key});
-        }
-      );
+      this.register_events();
     }
   }
 
-  // Triggered ~250ms to update UI elements which don't need updating frequently
+  remove() {
+    super.remove();
+
+    this.unregister_events();
+  }
+
+  private register_events() {
+    if (this._stream_img_element == null)
+      return;
+    this._stream_img_element.addEventListener(
+      "mousemove",
+      (event: MouseEvent) => {
+        /*mousePos = {
+          x: event.clientX,// / target.width,
+          y: event.clientY,// / target.height
+        };*/
+
+        if (event?.target == null || !(event.target instanceof HTMLElement))
+          return;
+
+        const rect = event.target.getBoundingClientRect();
+        this.model.set("mouse_pos_x", Math.round(event.clientX - rect.left));
+        this.model.set("mouse_pos_y", Math.round(rect.height - (event.clientY - rect.top)));
+        this.model.save_changes();
+      }
+    );
+    this._stream_img_element.addEventListener(
+      "mousedown",
+      (event: MouseEvent) => {
+        this.send({"mousedown": 0});
+      }
+    );
+    this._stream_img_element.addEventListener(
+      "mouseup",
+      (event: MouseEvent) => {
+        this.send({"mouseup": 0});
+      }
+    );
+    this._stream_img_element.addEventListener(
+      "mouseover",
+      (event: MouseEvent) => {
+        this._focussed = true;
+      }
+    );
+    this._stream_img_element.addEventListener(
+      "mouseleave",
+      (event: MouseEvent) => {
+        this._focussed = false;
+      }
+    );
+    window.addEventListener("keypress", this.on_keypress);
+    window.addEventListener("keydown", this.on_keydown);
+    window.addEventListener("keyup", this.on_keyup);
+    window.addEventListener("wheel", this.on_wheel, {passive: false});
+  }
+
+  private on_keypress = (event: KeyboardEvent) => {
+    if (this._focussed) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
+
+  private on_keydown = (event: KeyboardEvent) => {
+    if (this._focussed) {
+      this.send({"keydown": event.key});
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
+
+  private on_keyup = (event: KeyboardEvent) => {
+    if (this._focussed) {
+      this.send({"keyup": event.key});
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
+
+  private on_wheel = (event: WheelEvent) => {
+    if (this._focussed) {
+      this.send({"wheel": event.deltaY});
+      event.preventDefault();
+    }
+  }
+
+  private unregister_events() {
+    // It's probably a good idea to unregister any events on the document itself. The events on the element, should be
+    // destroyed with the element.
+    window.removeEventListener("keypress", this.on_keypress);
+    window.removeEventListener("keydown", this.on_keydown);
+    window.removeEventListener("keyup", this.on_keyup);
+    window.removeEventListener("wheel", this.on_wheel);
+  }
+
+// Triggered ~250ms to update UI elements which don't need updating frequently
   private slow_update() {
     if (this._status_frame_stats_element) {
       // TODO: FPS counter

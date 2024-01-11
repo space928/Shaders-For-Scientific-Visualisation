@@ -14,6 +14,7 @@ from ._frontend import module_name, module_version
 OnMessageDelegate = NewType("OnMessageDelegate", Callable[[], None])
 OnClickDelegate = NewType("OnClickDelegate", Callable[[bool], None])
 OnKeyDelegate = NewType("OnKeyDelegate", Callable[[str, bool], None])
+OnWheelDelegate = NewType("OnWheelDelegate", Callable[[float], None])
 
 
 class SSVRenderWidget(DOMWidget):
@@ -43,6 +44,7 @@ class SSVRenderWidget(DOMWidget):
         self._stop_handlers = CallbackDispatcher()
         self._click_handlers = CallbackDispatcher()
         self._key_handlers = CallbackDispatcher()
+        self._wheel_handlers = CallbackDispatcher()
         self._renderdoc_capture_handlers = CallbackDispatcher()
         self.on_msg(self._handle_widget_msg)
         self._view_count = 0
@@ -62,6 +64,8 @@ class SSVRenderWidget(DOMWidget):
             self._key_handlers(content["keydown"], True)
         elif "keyup" in content:
             self._key_handlers(content["keyup"], False)
+        elif "wheel" in content:
+            self._wheel_handlers(content["wheel"])
         elif "renderdoc_capture" in content:
             self._renderdoc_capture_handlers()
 
@@ -109,6 +113,15 @@ class SSVRenderWidget(DOMWidget):
         :param remove: set to true to remove the callback from the list of callbacks.
         """
         self._key_handlers.register_callback(callback, remove=remove)
+
+    def on_mouse_wheel(self, callback: OnWheelDelegate, remove=False):
+        """
+        Register a callback to execute when the widget receives a mouse wheel event.
+
+        :param callback: the function to be called when the event is raised.
+        :param remove: set to true to remove the callback from the list of callbacks.
+        """
+        self._wheel_handlers.register_callback(callback, remove=remove)
 
     def on_renderdoc_capture(self, callback: OnMessageDelegate, remove=False):
         """
