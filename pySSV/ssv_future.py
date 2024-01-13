@@ -63,3 +63,16 @@ class Reference(Generic[T]):
     @result.setter
     def result(self, value: T):
         self._result = value
+
+    def __str__(self):
+        return str(self._result)
+
+    def __float__(self):
+        return float(self._result)
+
+    def __int__(self):
+        return int(self._result)
+
+    def __bool__(self):
+        return bool(self._result)
+
