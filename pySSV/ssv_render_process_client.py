@@ -3,50 +3,20 @@
 import logging
 from multiprocessing import Process, Queue
 from queue import Empty
-from threading import Thread, Lock, Event
+from threading import Thread, Lock
 from typing import Callable, NewType, Optional, Any, Union
 
 import numpy as np
 import numpy.typing as npt
 
 from . import ssv_logging
+from .ssv_future import Future
 from .ssv_logging import log
 from .ssv_render_process_server import SSVRenderProcessServer
 
 
 OnRenderObserverDelegate = NewType("OnRenderObserverDelegate", Callable[[bytes], None])
 OnLogObserverDelegate = NewType("OnLogObserverDelegate", Callable[[str], None])
-
-
-class Future:
-    """
-    Represents a lightweight, low-level Event-backed future.
-
-    For more complex async requirements, the asyncio library is probably a better idea.
-    """
-    is_available: Event
-    result: Any
-
-    def __init__(self):
-        self.is_available = Event()
-
-    def set_result(self, val):
-        """
-        Sets the result of the Future object and notifies objects waiting for the result.
-
-        :param val: the result to set.
-        """
-        self.result = val
-        self.is_available.set()
-
-    def wait_result(self):
-        """
-        Waits synchronously until the result is available and then returns it.
-
-        :return: the awaited result.
-        """
-        self.is_available.wait()
-        return self.result
 
 
 class SSVRenderProcessClient:

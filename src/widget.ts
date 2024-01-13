@@ -136,13 +136,13 @@ export class SSVRenderView extends DOMWidgetView {
     this._stream_img_element.addEventListener(
       "mousedown",
       (event: MouseEvent) => {
-        this.send({"mousedown": 0});
+        this.send({"mousedown": event.button});
       }
     );
     this._stream_img_element.addEventListener(
       "mouseup",
       (event: MouseEvent) => {
-        this.send({"mouseup": 0});
+        this.send({"mouseup": event.button});
       }
     );
     this._stream_img_element.addEventListener(

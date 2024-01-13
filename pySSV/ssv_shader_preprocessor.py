@@ -107,6 +107,9 @@ class SSVShaderPreprocessor:
                     val = "1"
                 else:
                     continue
+            if val is None:
+                val = "0"
+                log(f"[ShaderPreprocessor] Value of shader argument {arg} is None!", severity=logging.WARN)
             if val.lower() == "false":
                 # Don't define  defines which are set to false
                 continue

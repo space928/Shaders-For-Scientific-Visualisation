@@ -158,6 +158,10 @@ class SSVRenderOpenGL(SSVRender):
         # other.
         self.ctx.enable(moderngl.DEPTH_TEST)
         self.ctx.depth_func = "<="
+        self.ctx.enable(moderngl.BLEND)
+        # A bit of a weird blending function, but it plays 'nice' with the GUI...
+        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA, moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
+        self.ctx.blend_equation = moderngl.FUNC_ADD  # , moderngl.MAX
 
     def log_context_info(self, full=False):
         """
@@ -473,8 +477,10 @@ class SSVRenderOpenGL(SSVRender):
             draw_calls = sorted(rb.draw_calls.values(), key=lambda x: x.order)
 
             self.ctx.clear()
+            # log(f"#### BEGIN DRAW ####", severity=logging.INFO)
             for dc in draw_calls:
                 if dc.vertex_array is not None:
+                    # log(f"DRAW CALL: o={dc.order} v_attrs={dc.vertex_attributes}", severity=logging.INFO)
                     self._bind_textures(dc.shader_program)
                     dc.vertex_array.render(mode=dc.primitive_type)
 
