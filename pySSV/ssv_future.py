@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 
 from threading import Event
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Optional
 
 
 T = TypeVar("T")
@@ -37,14 +37,18 @@ class Future(Generic[T]):
         self._result = val
         self._is_available.set()
 
-    def wait_result(self) -> T:
+    def wait_result(self, timeout: Optional[float] = None) -> Optional[T]:
         """
         Waits synchronously until the result is available and then returns it.
 
-        :return: the awaited result.
+        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
+                        indefinitely.
+        :return: the awaited result or ``None`` if the operation timed out.
         """
-        self._is_available.wait()
-        return self._result
+        if self._is_available.wait(timeout):
+            return self._result
+        else:
+            return None
 
 
 class Reference(Generic[T]):

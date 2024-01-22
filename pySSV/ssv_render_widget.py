@@ -7,8 +7,9 @@
 from ipywidgets import DOMWidget, CallbackDispatcher
 from io import StringIO
 from typing import NewType, Callable
-from traitlets import Unicode, Enum, Int, Bool
+from traitlets import Unicode, Enum, Int, Bool, Float, Bytes
 from ._frontend import module_name, module_version
+from .ssv_render_process_server import SSVStreamingMode
 
 
 OnMessageDelegate = NewType("OnMessageDelegate", Callable[[], None])
@@ -29,13 +30,19 @@ class SSVRenderWidget(DOMWidget):
     _view_module = Unicode(module_name).tag(sync=True)
     _view_module_version = Unicode(module_version).tag(sync=True)
 
-    streaming_mode = Enum(("png", "jpg", "h264"), "png").tag(sync=True)
-    stream_data = Unicode("test").tag(sync=True)
+    streaming_mode = Enum(SSVStreamingMode, SSVStreamingMode.JPG).tag(sync=True)
+    stream_data = Bytes(b"test").tag(sync=True)
+    use_websockets = Bool(False).tag(sync=True)
+    websocket_url = Unicode("").tag(sync=True)
+    canvas_width = Int(0).tag(sync=True)
+    canvas_height = Int(0).tag(sync=True)
     status_connection = Bool(False).tag(sync=True)
     status_logs = Unicode("").tag(sync=True)
     mouse_pos_x = Int(0).tag(sync=True)
     mouse_pos_y = Int(0).tag(sync=True)
     enable_renderdoc = Bool(False).tag(sync=True)
+    frame_rate = Float(0).tag(sync=True)
+    frame_times = Unicode("").tag(sync=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
