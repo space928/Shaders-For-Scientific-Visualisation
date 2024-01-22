@@ -7,7 +7,8 @@ import sys
 import time
 from typing import Optional
 from io import BytesIO
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, current_process
+from threading import current_thread
 from queue import Empty
 import enum
 
@@ -66,13 +67,15 @@ class SSVRenderProcessServer:
         self._command_queue_rx: Queue = command_queue_rx
         self.__init_logger(log_severity)
         self._use_renderdoc_api = use_renderdoc_api
+        # Makes it easier to find the render thread in the profiler
+        current_thread().name = current_process().name
 
         self.running = False
         self.target_framerate = 60
         self.output_size = (640, 480)
         self.stream_mode: SSVStreamingMode = SSVStreamingMode.PNG
         self.watchdog_time = timeout
-        self.encode_quality = None
+        self.encode_quality: Optional[float] = None
         self.log_frame_timing = False
 
         self._last_heartbeat_time = 0
@@ -166,13 +169,13 @@ class SSVRenderProcessServer:
             if self.stream_mode == SSVStreamingMode.MJPEG:
                 # MJPEG doesn't seem to respect CBR
                 q = min(max(round(
-                    1-(self.encode_quality/100) * self._streaming_format_quality_scaling[self.stream_mode])+1, 1), 69)
+                    (1-(self.encode_quality/100)) * self._streaming_format_quality_scaling[self.stream_mode])+1, 1), 69)
                 stream.options["qmin"] = str(q)
                 stream.options["qmax"] = str(q)
                 if self.encode_quality >= 90:
                     stream.pix_fmt = "yuvj444p"
             else:
-                q = round(self.encode_quality/100 * self._streaming_format_quality_scaling[self.stream_mode])
+                q = max(round(self.encode_quality/100 * self._streaming_format_quality_scaling[self.stream_mode]), 10)
                 stream.options["b"] = str(q)
                 if self.encode_quality >= 90 and self.stream_mode in {SSVStreamingMode.HEVC, SSVStreamingMode.VP9}:
                     stream.pix_fmt = "yuv444p"
@@ -255,7 +258,10 @@ class SSVRenderProcessServer:
                 else:
                     # If this timeout is infinite then the watchdog can't kill paused render processes which also need
                     # to be killed otherwise all the RenderDoc sockets get used up...
-                    timeout = max(self.watchdog_time if self.watchdog_time is not None else 5, 1)
+                    if self.watchdog_time is None:
+                        timeout = 5
+                    else:
+                        timeout = min(self.watchdog_time*0.5, 1)
 
                 # Wait for <timeout and (potentially) execute one render command
                 # if not self.__parse_render_command(timeout):
@@ -401,21 +407,21 @@ class SSVRenderProcessServer:
         if not self._renderer.render():
             self.running = False
         if self.stream_mode == SSVStreamingMode.PNG:
-            if len(self._frame_buffer_bytes) == self.output_size[0]*self.output_size[1]*4:
+            if len(self._frame_buffer_bytes) == self.output_size[0]*self.output_size[1] * 4:
                 self._renderer.read_frame_into(self._frame_buffer_bytes)
             else:
                 self._frame_buffer_bytes = bytearray(self._renderer.read_frame())
             render_time = time.perf_counter()
             stream_data = self.__to_png(self._frame_buffer_bytes)
         elif self.stream_mode == SSVStreamingMode.JPG:
-            if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 4:
+            if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 3:
                 self._renderer.read_frame_into(self._frame_buffer_bytes, 3)
             else:
                 self._frame_buffer_bytes = bytearray(self._renderer.read_frame(3))
             render_time = time.perf_counter()
             stream_data = self.__to_jpg(self._frame_buffer_bytes)
         elif self.stream_mode in self._supported_video_formats:
-            if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 4:
+            if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 3:
                 self._renderer.read_frame_into(self._frame_buffer_bytes, 3)
             else:
                 self._frame_buffer_bytes = bytearray(self._renderer.read_frame(3))

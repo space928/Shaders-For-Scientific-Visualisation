@@ -10,7 +10,6 @@ import {
   WidgetView
 } from "@jupyter-widgets/base";
 import {KernelMessage} from "@jupyterlab/services";
-import {JSONObject} from "@lumino/coreutils";
 
 import {MODULE_NAME, MODULE_VERSION} from "./version";
 import {RENDERDOC_LOGO_SVG} from "./renderdoc_logo";
@@ -25,14 +24,13 @@ enum StreamingMode {
   VP8 = "vp8",
   VP9 = "vp9",
   HEVC = "hevc",
-  MJPG = "mjpeg"
+  MPEG4 = "mpeg4",
+  MJPEG = "mjpeg"
 }
 
 interface StreamDataEvent {
   (args: ArrayBuffer | ArrayBufferView): void;
 }
-
-declare var JSONDict: JSONObject;
 
 export class SSVRenderModel extends DOMWidgetModel {
   defaults() {
@@ -47,7 +45,8 @@ export class SSVRenderModel extends DOMWidgetModel {
       streaming_mode: StreamingMode.PNG,
       canvas_width: 0,
       canvas_height: 0,
-      stream_data: "ts",
+      stream_data_binary: new ArrayBuffer(0),
+      stream_data_ascii: "",
       use_websockets: false,
       websocket_url: "",
       status_connection: false,
@@ -131,7 +130,7 @@ export class SSVRenderView extends DOMWidgetView {
     switch (this._streaming_mode) {
       case StreamingMode.JPG:
       case StreamingMode.PNG:
-      case StreamingMode.MJPG:
+      case StreamingMode.MJPEG:
         this._stream_element = document.createElement("img");
         this._stream_element.className = "ssv-render-viewport";
         this._stream_element.setAttribute("draggable", "false");
@@ -189,7 +188,7 @@ export class SSVRenderView extends DOMWidgetView {
         );
     }
 
-    if (this._streaming_mode == StreamingMode.MJPG && this._stream_element) {
+    if (this._streaming_mode == StreamingMode.MJPEG && this._stream_element) {
       (this._stream_element as HTMLImageElement).src = this.model.get("websocket_url");
     }
 
@@ -208,7 +207,8 @@ export class SSVRenderView extends DOMWidgetView {
         });
       });
     } else {
-      this.model.on("change:stream_data", () => { this.stream_data_changed(this.model.get("stream_data")); }, this);
+      this.model.on("change:stream_data_ascii", () => { this.stream_data_changed(this.model.get("stream_data_ascii")); }, this);
+      this.model.on("change:stream_data_binary", () => { this.stream_data_changed(this.model.get("stream_data_binary")); }, this);
       (this.model as SSVRenderModel).on_stream_data(this.stream_data_changed, this);
     }
 
@@ -497,7 +497,7 @@ export class SSVRenderView extends DOMWidgetView {
     }, this);
   }
 
-  stream_data_changed(stream_data: ArrayBuffer | ArrayBufferView) {
+  stream_data_changed(stream_data: ArrayBuffer | ArrayBufferView | string) {
     if (!this._stream_element) return;
 
     switch (this._streaming_mode) {
@@ -505,15 +505,19 @@ export class SSVRenderView extends DOMWidgetView {
       case StreamingMode.PNG:
         //(this._stream_element as HTMLImageElement).src = this.model.get("stream_data");
         //(this._stream_element as HTMLImageElement).src = this._text_decoder.decode(this.model.get("stream_data"));
-        (this._stream_element as HTMLImageElement).src = this._text_decoder.decode(stream_data);
+        if (typeof stream_data === "string")
+          (this._stream_element as HTMLImageElement).src = stream_data as string;
+        else
+          (this._stream_element as HTMLImageElement).src = this._text_decoder.decode(stream_data);
         //(this._stream_element as HTMLImageElement).src = stream_data as string;
         break;
-      //case StreamingMode.MJPG:
+      //case StreamingMode.MJPEG:
       case StreamingMode.H264:
       //case StreamingMode.HEVC:
+      //case StreamingMode.MPEG4:
       case StreamingMode.VP8:
       case StreamingMode.VP9:
-        if (!this._video_decoder) return;
+        if (!this._video_decoder || typeof stream_data === "string") return;
         this._video_decoder.decode(new EncodedVideoChunk({type:"key", duration:1, timestamp:1, data:stream_data}));
         break;
     }

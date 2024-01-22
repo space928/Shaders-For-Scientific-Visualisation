@@ -52,15 +52,27 @@ class SSVCamera:
         self._projection_matrix = np.identity(4, dtype=np.float32)
         self._up_vec = np.array([0., 1., 0.], dtype=np.float32)
 
+    @staticmethod
+    def _cross_3d(a: npt.NDArray[float], b: npt.NDArray[float]) -> npt.NDArray[float]:
+        res = np.empty(3, dtype=np.float32)
+        res[0] = a[1] * b[2] - a[2] * b[1]
+        res[1] = -(a[0] * b[2] - a[2] * b[0])
+        res[2] = a[0] * b[1] - a[1] * b[0]
+        return res
+
+    @staticmethod
+    def _length_3d(a: npt.NDArray[float]) -> float:
+        return np.sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
+
     @property
     def rotation_matrix(self) -> npt.NDArray[float]:
         """
         Gets the current view matrix of the camera, without the translation component.
         """
-        right = np.cross(self.direction, self._up_vec)
-        right /= np.linalg.norm(right)
-        up = np.cross(right, self.direction)
-        up /= np.linalg.norm(up)
+        right = SSVCamera._cross_3d(self.direction, self._up_vec)
+        right /= SSVCamera._length_3d(right)
+        up = SSVCamera._cross_3d(right, self.direction)
+        up /= SSVCamera._length_3d(up)
         rot_matrix = np.identity(4, dtype=np.float32)
         rot_matrix[0:3, 0] = right
         rot_matrix[0:3, 1] = up
@@ -214,7 +226,7 @@ class SSVOrbitCameraController(SSVCameraController):
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
-        if np.any(mouse_down):
+        if mouse_down[0] or mouse_down[1] or mouse_down[2]:
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
                 self._mouse_old_pos[:] = mouse_pos

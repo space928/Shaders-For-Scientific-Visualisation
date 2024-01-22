@@ -31,7 +31,8 @@ class SSVRenderWidget(DOMWidget):
     _view_module_version = Unicode(module_version).tag(sync=True)
 
     streaming_mode = Enum(SSVStreamingMode, SSVStreamingMode.JPG).tag(sync=True)
-    stream_data = Bytes(b"test").tag(sync=True)
+    stream_data_binary = Bytes(b"test").tag(sync=True)
+    stream_data_ascii = Unicode("test").tag(sync=True)
     use_websockets = Bool(False).tag(sync=True)
     websocket_url = Unicode("").tag(sync=True)
     canvas_width = Int(0).tag(sync=True)

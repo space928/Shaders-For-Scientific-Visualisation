@@ -46,6 +46,7 @@ class Future(Generic[T]):
         :return: the awaited result or ``None`` if the operation timed out.
         """
         if self._is_available.wait(timeout):
+            del self._is_available
             return self._result
         else:
             return None

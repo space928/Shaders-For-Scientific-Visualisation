@@ -84,6 +84,7 @@ class SSVRenderProcessClient:
                     if command_args[0] in self._query_futures:
                         res = command_args[1:] if len(command_args) > 2 else command_args[1]
                         self._query_futures[command_args[0]].set_result(res)
+                        del self._query_futures[command_args[0]]
             else:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
@@ -167,14 +168,17 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("DFBO", buffer_uid))
 
-    def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[int] = None):
+    def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[float] = None):
         """
         Starts rendering frames at the given framerate.
 
         :param target_framerate: the framerate to render at. Set to -1 to render a single frame.
         :param stream_mode: the streaming format to use to send the frames to the widget.
-        :param encode_quality: the quality value for the stream encoder. When using jpg, setting to 100 disables
-                               compression; when using png, setting to 0 disables compression.
+        :param encode_quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                               (some stream modes support values larger than 100, others clamp it internally), where 100
+                               results in the highest quality. This value is scaled to give a bit rate target or
+                               quality factor for the chosen encoder. Pass in ``None`` to use the encoder's default
+                               quality settings.
         """
         self._command_queue_tx.put(("Rndr", target_framerate, stream_mode, encode_quality))
 
@@ -190,7 +194,7 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("HrtB",))
 
-    def set_timeout(self, time=1):
+    def set_timeout(self, time: Optional[float] = 1):
         """
         Sets the maximum time the render process will wait for a heartbeat before killing itself.
         Set to None to disable the watchdog.
