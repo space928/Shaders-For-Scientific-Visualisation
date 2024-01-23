@@ -22,20 +22,20 @@ from . import ssv_logging
 from .ssv_logging import log, SSVLogStream
 
 
-class SSVStreamingMode(enum.StrEnum):
+class SSVStreamingMode(enum.Enum):
     """
     Represents an image/video streaming mode for pySSV. Note that some of these streaming formats may not be
     supported on all platforms.
     """
-    JPG = "jpg",
-    PNG = "png",
+    JPG = "jpg"
+    PNG = "png"
 
-    VP8 = "vp8",
-    VP9 = "vp9",
-    H264 = "h264",
-    HEVC = "hevc",
+    VP8 = "vp8"
+    VP9 = "vp9"
+    H264 = "h264"
+    HEVC = "hevc"
     """Not supported"""
-    MPEG4 = "mpeg4",
+    MPEG4 = "mpeg4"
     """Not supported"""
 
     MJPEG = "mjpeg"

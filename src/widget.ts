@@ -42,7 +42,7 @@ export class SSVRenderModel extends DOMWidgetModel {
       _view_name: SSVRenderModel.view_name,
       _view_module: SSVRenderModel.view_module,
       _view_module_version: SSVRenderModel.view_module_version,
-      streaming_mode: StreamingMode.PNG,
+      streaming_mode: StreamingMode.PNG.toString(),
       canvas_width: 0,
       canvas_height: 0,
       stream_data_binary: new ArrayBuffer(0),
@@ -125,7 +125,7 @@ export class SSVRenderView extends DOMWidgetView {
 
     this.el.classList.add("ssv-render-widget");
 
-    this._streaming_mode = this.model.get("streaming_mode");
+    this._streaming_mode = StreamingMode[this.model.get("streaming_mode") as keyof typeof StreamingMode];
     this._use_websockets = this.model.get("use_websockets");
     switch (this._streaming_mode) {
       case StreamingMode.JPG:

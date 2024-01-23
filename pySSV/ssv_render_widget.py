@@ -30,7 +30,7 @@ class SSVRenderWidget(DOMWidget):
     _view_module = Unicode(module_name).tag(sync=True)
     _view_module_version = Unicode(module_version).tag(sync=True)
 
-    streaming_mode = Enum(SSVStreamingMode, SSVStreamingMode.JPG).tag(sync=True)
+    streaming_mode = Enum([e.name for e in SSVStreamingMode], SSVStreamingMode.JPG.name).tag(sync=True)
     stream_data_binary = Bytes(b"test").tag(sync=True)
     stream_data_ascii = Unicode("test").tag(sync=True)
     use_websockets = Bool(False).tag(sync=True)
