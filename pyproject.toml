@@ -23,6 +23,12 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Environment :: GPU",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Graphics :: 3D Rendering",
+    "Topic :: Multimedia :: Graphics :: Viewers",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Typing :: Typed",
 ]
 dependencies = [
     "ipywidgets>=8.0.0",
@@ -32,7 +38,7 @@ dependencies = [
     "moderngl>=5.8.2",
     "Pillow>=10.1.0",
     "pcpp==1.30",
-    "av==9.0.2",
+    "av==11.0.0",
     "portpicker==1.6.0",
     "websockets==12.0"
 ]

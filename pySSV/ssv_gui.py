@@ -81,7 +81,11 @@ class Rect:
 
 
 class CachedVertexArray:
-    """Stores an SSVVertexBuffer and a reusable numpy vertex array."""
+    """
+    Stores an SSVVertexBuffer and a reusable numpy vertex array.
+
+    :meta private:
+    """
     vertex_buff: SSVVertexBuffer
     v_array: npt.NDArray
     used_space: int

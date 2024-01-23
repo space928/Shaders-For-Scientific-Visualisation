@@ -148,7 +148,7 @@ class SSVRenderProcessServer:
         stream.options = {
             # Set some options to reduce latency as much as possible, depending on the codec these can can have a
             # large impact on the output size.
-            "g": "50",
+            "g": "30",
             "lag-in-frames": "2",
             "speed": "10",
             "quality": "realtime",

@@ -14,7 +14,11 @@ or via conda::
     conda install pySSV
 
 
-If you installed via pip, and notebook version < 5.3, you will also have to
+If you don't already have Jupyter Lab installed, install via pip::
+
+    pip install jupyterlab==4.*
+
+If you installed via pip, and are using Jupyter Notebook version < 5.3, you will also have to
 install / configure the front-end extension as well. If you are using classic
 notebook (as opposed to Jupyterlab), run::
 
@@ -22,14 +26,7 @@ notebook (as opposed to Jupyterlab), run::
 
     jupyter nbextension enable [--sys-prefix / --user / --system] --py pySSV
 
-with the `appropriate flag`_. If you are using Jupyterlab, install the extension
-with::
-
-    jupyter labextension install pySSV
-
-If you are installing using conda, these commands should be unnecessary, but If
-you need to run them the commands should be the same (just make sure you choose the
-`--sys-prefix` flag).
+with the `appropriate flag`_.
 
 
 .. links

@@ -275,7 +275,7 @@ class SSVCanvas:
 
     @property
     def mouse_down(self) -> tuple[bool, bool, bool]:
-        """Gets the current mouse button state as a tuple of ``bool``s. [left, right, middle]"""
+        """Gets the current mouse button state as a tuple of ``bool``. [left, right, middle]"""
         return self._mouse_down
 
     @property
