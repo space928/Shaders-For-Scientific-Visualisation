@@ -93,7 +93,7 @@ class SSVCanvas:
         self._widget = None
         if not standalone:
             self._widget = SSVRenderWidget()
-            self._widget.streaming_mode = self._streaming_mode
+            self._widget.streaming_mode = self._streaming_mode.name
             self._widget.enable_renderdoc = self._use_renderdoc
             self._widget.on_heartbeat(self.__on_heartbeat)
             self._widget.on_play(self.__on_play)
@@ -346,9 +346,9 @@ class SSVCanvas:
         if isinstance(stream_mode, str):
             try:
                 stream_mode = SSVStreamingMode(stream_mode)
-            except KeyError:
-                raise KeyError(f"'{stream_mode}' is not a valid streaming mode. Supported streaming modes are: \n"
-                               f"{list(SSVStreamingMode)}")
+            except ValueError:
+                raise KeyError(f"'{stream_mode}' is not a valid streaming mode. Supported streaming modes are: "
+                               f"{[e.value for e in SSVStreamingMode]}")
         self._streaming_mode = stream_mode
         self._last_run_settings = {"stream_mode": stream_mode,
                                    "stream_quality": stream_quality,
@@ -364,7 +364,7 @@ class SSVCanvas:
 
         if not self._standalone:
             from IPython.display import display
-            self._widget.streaming_mode = self._streaming_mode
+            self._widget.streaming_mode = self._streaming_mode.name
             self._widget.use_websockets = self._supports_websockets
             self._widget.canvas_width, self._widget.canvas_height = self._size
             if self._streaming_mode == SSVStreamingMode.MJPEG:
@@ -388,7 +388,7 @@ class SSVCanvas:
         self._render_process_client.update_uniform(None, None, "uProjMat", self._main_camera.projection_matrix)
 
         self._render_process_client.set_timeout(None if never_kill else self._render_timeout)
-        self._render_process_client.render(self._target_framerate, str(self._streaming_mode), stream_quality)
+        self._render_process_client.render(self._target_framerate, self._streaming_mode.value, stream_quality)
 
     def stop(self, force=False) -> None:
         """
