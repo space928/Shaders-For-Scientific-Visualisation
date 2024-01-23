@@ -107,6 +107,18 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
+# -- Options for autodoc --------------------------------------------------
+
+autoclass_content = "both"
+autodoc_member_order = "bysource"
+autodoc_default_options = {
+    "member-order": "bysource",
+    # "special-members": "__init__",
+    "undoc-members": False,
+    # "exclude-members": "__weakref__"
+}
+autodoc_typehints = "both"
+
 # -- Options for HTML output ----------------------------------------------
 
 
@@ -206,6 +218,8 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # that nbsphinx complains about:
 #
 nbsphinx_allow_errors = True  # exception ipstruct.py ipython_genutils
+# Prevent Jupyter notebooks from being automatically executed during the docs build
+nbsphinx_execute = 'never'
 
 from sphinx.util import logging
 

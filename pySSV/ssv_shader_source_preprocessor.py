@@ -23,6 +23,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def on_file_open(self, is_system_include, includepath):
         """
         *Used internally by the parser.*
+
+        :meta private:
         """
         if os.path.isfile(includepath):
             return super().on_file_open(is_system_include, includepath)
@@ -47,6 +49,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def on_directive_unknown(self, directive, toks, ifpassthru, precedingtoks):
         """
         *Used internally by the parser.*
+
+        :meta private:
         """
         if directive.value == "pragma":
             # This is a special pragma directive which allows #line directives to be suppressed. This is needed to
@@ -71,6 +75,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def token(self):
         """
         *Used internally by the parser.*
+
+        :meta private:
         """
         tok = super().token()
 
@@ -85,6 +91,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def on_comment(self, tok):
         """
         *Used internally by the parser.*
+
+        :meta private:
         """
         # Remove any comments from templates, but keep user comments
         if tok.source == "TEMPLATE_DATA":
@@ -95,6 +103,8 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
     def on_error(self, file, line, msg):
         """
         *Used internally by the parser.*
+
+        :meta private:
         """
         log(f"[ShaderPreprocessor] [{file}:{line}] {msg}", severity=logging.ERROR)
         self.return_code += 1

@@ -31,14 +31,15 @@ class SSVRenderProcessClient:
 
         :param backend: the rendering backend to use.
         :param timeout: the render process watchdog timeout, set to None to disable.
-        :param use_renderdoc_api: whether the renderdoc_api should be initialized.
+        :param use_renderdoc_api: whether the renderdoc_api should be initialised.
         """
         self._command_queue_tx = Queue()
         self._command_queue_rx = Queue()
         self._query_futures: dict[int, Future] = dict()
         self._query_future_id_counter = 0
         self._query_futures_lock = Lock()
-        self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True)
+        self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True,
+                                 name=f"SSV Render Process Client RX Thread - {id(self):#08x}")
         self._rx_thread.start()
         self._on_render_observers: list[OnRenderObserverDelegate] = []
         self._on_log_observers: list[OnLogObserverDelegate] = []
@@ -46,10 +47,15 @@ class SSVRenderProcessClient:
         # Construct the render process server in its own process, passing it the backend string and the command queues
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
         self._render_process = Process(target=SSVRenderProcessServer, daemon=True,
+                                       name=f"SSV Render Process - {id(self):#08x}",
                                        args=(backend, self._command_queue_rx, self._command_queue_tx,
                                              ssv_logging.get_severity(), timeout, use_renderdoc_api))
         self._render_process.start()
         self._is_alive = True
+
+    def __del__(self):
+        self._render_process.kill()
+        self._render_process.close()
 
     def __rx_thread_process(self):
         while True:
@@ -78,16 +84,19 @@ class SSVRenderProcessClient:
                     if command_args[0] in self._query_futures:
                         res = command_args[1:] if len(command_args) > 2 else command_args[1]
                         self._query_futures[command_args[0]].set_result(res)
+                        del self._query_futures[command_args[0]]
             else:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
 
-    def __wait_async_query(self, command: str, *args) -> Any:
+    def __wait_async_query(self, command: str, *args, timeout: Optional[float] = None) -> Optional[Any]:
         """
         Runs a command which returns an async result and waits for its result to be returned.
 
         :param command: the command to run.
         :param args: any additional args to pass to the command.
+        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
+                        indefinitely.
         :return: the result of the async query command.
         """
         # While dictionaries are atomic in python, it's still a good idea to use a lock
@@ -98,11 +107,11 @@ class SSVRenderProcessClient:
             self._query_futures[query_id] = result
 
         self._command_queue_tx.put((command, query_id, *args))
-        return result.wait_result()
+        return result.wait_result(timeout)
 
     @property
     def is_alive(self):
-        return self._is_alive
+        return self._is_alive and self._render_process.is_alive()
 
     def subscribe_on_render(self, observer: OnRenderObserverDelegate):
         """
@@ -159,14 +168,17 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("DFBO", buffer_uid))
 
-    def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[int] = None):
+    def render(self, target_framerate: float, stream_mode: str, encode_quality: Optional[float] = None):
         """
         Starts rendering frames at the given framerate.
 
         :param target_framerate: the framerate to render at. Set to -1 to render a single frame.
         :param stream_mode: the streaming format to use to send the frames to the widget.
-        :param encode_quality: the quality value for the stream encoder. When using jpg, setting to 100 disables
-                               compression; when using png, setting to 0 disables compression.
+        :param encode_quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                               (some stream modes support values larger than 100, others clamp it internally), where 100
+                               results in the highest quality. This value is scaled to give a bit rate target or
+                               quality factor for the chosen encoder. Pass in ``None`` to use the encoder's default
+                               quality settings.
         """
         self._command_queue_tx.put(("Rndr", target_framerate, stream_mode, encode_quality))
 
@@ -182,7 +194,7 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("HrtB",))
 
-    def set_timeout(self, time=1):
+    def set_timeout(self, time: Optional[float] = 1):
         """
         Sets the maximum time the render process will wait for a heartbeat before killing itself.
         Set to None to disable the watchdog.
@@ -305,17 +317,43 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("RdCp", filename))
 
-    def get_context_info(self) -> dict[str, str]:
+    def get_context_info(self, timeout: Optional[float] = None) -> Optional[dict[str, str]]:
         """
         Returns the OpenGL context information.
-        """
-        return self.__wait_async_query("GtCt")
 
-    def get_supported_extensions(self) -> set[str]:
+        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
+                        indefinitely.
+        """
+        return self.__wait_async_query("GtCt", timeout=timeout)
+
+    def get_frame_times(self, timeout: Optional[float] = None) -> Optional[tuple[float, float, float, float]]:
+        """
+        Gets the frame time statistics from the renderer. This function is blocking and shouldn't be called too often.
+
+        Returns the following statistics:
+         - avg_frame_time: Average time taken to render a frame (calculated each
+           frame using: ``last_avg_frame_time * 0.9 + frame_time * 0.1``)
+         - max_frame_time: The maximum frame time since this
+           function was last called. (Using ``dbg_log_frame_times`` interferes with this value.)
+         - avg_encode_time: Average time taken to encode a frame for streaming (calculated each
+           frame using: ``last_avg_encode_time * 0.9 + encode_time * 0.1``)
+         - max_encode_time: The maximum time taken to encode a frame for streaming since this
+           function was last called. (Using ``dbg_log_frame_times`` interferes with this value.)
+
+        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
+                        indefinitely.
+        :return: (avg_frame_time, max_frame_time, avg_encode_time, max_encode_time)
+        """
+        return self.__wait_async_query("GtFt", timeout=timeout)
+
+    def get_supported_extensions(self, timeout: Optional[float] = None) -> Optional[set[str]]:
         """
         Gets the set of supported OpenGL shader compiler extensions.
+
+        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
+                        indefinitely.
         """
-        return self.__wait_async_query("GtEx")
+        return self.__wait_async_query("GtEx", timeout=timeout)
 
     def dbg_log_context_info(self, full=False):
         """

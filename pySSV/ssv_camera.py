@@ -39,28 +39,40 @@ class SSVCamera:
     aspect_ratio: float
     """The aspect ratio of the render buffer."""
     def __init__(self):
-        self.position = np.array([0., 0., 0.])
-        self.direction = np.array([0., 0., -1.])
+        self.position = np.array([0., 0., 0.], dtype=np.float32)
+        self.direction = np.array([0., 0., -1.], dtype=np.float32)
         self.fov = 60
         self.clip_dist = (0.1, 1000.0)
         self.aspect_ratio = 1
 
-        self._mouse_old_pos = np.array([0., 0.])
-        self._rotation = np.array([math.pi, 0.])
+        self._mouse_old_pos = np.array([0., 0.], dtype=np.int32)
+        self._rotation = np.array([math.pi, 0.], dtype=np.float32)
         self._mouse_was_pressed = False
         self._view_matrix = np.identity(4, dtype=np.float32)
         self._projection_matrix = np.identity(4, dtype=np.float32)
-        self._up_vec = np.array([0., 1., 0.])
+        self._up_vec = np.array([0., 1., 0.], dtype=np.float32)
+
+    @staticmethod
+    def _cross_3d(a: npt.NDArray[float], b: npt.NDArray[float]) -> npt.NDArray[float]:
+        res = np.empty(3, dtype=np.float32)
+        res[0] = a[1] * b[2] - a[2] * b[1]
+        res[1] = -(a[0] * b[2] - a[2] * b[0])
+        res[2] = a[0] * b[1] - a[1] * b[0]
+        return res
+
+    @staticmethod
+    def _length_3d(a: npt.NDArray[float]) -> float:
+        return np.sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
 
     @property
     def rotation_matrix(self) -> npt.NDArray[float]:
         """
         Gets the current view matrix of the camera, without the translation component.
         """
-        right = np.cross(self.direction, self._up_vec)
-        right /= np.linalg.norm(right)
-        up = np.cross(right, self.direction)
-        up /= np.linalg.norm(up)
+        right = SSVCamera._cross_3d(self.direction, self._up_vec)
+        right /= SSVCamera._length_3d(right)
+        up = SSVCamera._cross_3d(right, self.direction)
+        up /= SSVCamera._length_3d(up)
         rot_matrix = np.identity(4, dtype=np.float32)
         rot_matrix[0:3, 0] = right
         rot_matrix[0:3, 1] = up
@@ -137,8 +149,8 @@ class SSVLookCameraController(SSVCameraController):
                 self._mouse_was_pressed = True
                 self._mouse_old_pos[:] = mouse_pos
             else:
-                self._rotation += (np.array(mouse_pos) - self._mouse_old_pos) * self.pan_speed
-                self._rotation[1] = min(max(self._rotation[1], -math.pi/2), math.pi/2)
+                self._rotation += (np.array(mouse_pos, dtype=np.int32) - self._mouse_old_pos) * self.pan_speed
+                self._rotation[1] = min(max(self._rotation[1], -math.pi/2 + 1e-6), math.pi/2 - 1e-6)
                 self.direction[0] = math.cos(self._rotation[0]) * math.cos(self._rotation[1])
                 self.direction[1] = math.sin(self._rotation[1])
                 self.direction[2] = math.sin(self._rotation[0]) * math.cos(self._rotation[1])
@@ -172,22 +184,40 @@ class SSVOrbitCameraController(SSVCameraController):
     """
     A camera controller which supports orbiting around a given target.
     """
-    target_pos: npt.NDArray[3]
-    """The point around which to orbit."""
-    orbit_dist: float
-    """The distance from the target position to orbit at."""
+    _target_pos: npt.NDArray[3]
+    _orbit_dist: float
 
     def __init__(self):
         super().__init__()
-        self.target_pos = np.array([0, 0, 0])
-        self.orbit_dist = 2
+        self._target_pos = np.array([0, 0, 0], dtype=np.float32)
+        self._orbit_dist = 2
+
+    @property
+    def target_pos(self):
+        """Gets or sets the point around which to orbit."""
+        return self._target_pos
+
+    @target_pos.setter
+    def target_pos(self, value):
+        self._target_pos = value
+        self._update_direction_position()
+
+    @property
+    def orbit_dist(self):
+        """Gets or sets the distance from the target position to orbit at."""
+        return self._orbit_dist
+
+    @orbit_dist.setter
+    def orbit_dist(self, value):
+        self._orbit_dist = value
+        self._update_direction_position()
 
     def _update_direction_position(self):
         self.direction[0] = math.cos(self._rotation[0]) * math.cos(self._rotation[1])
         self.direction[1] = math.sin(self._rotation[1])
         self.direction[2] = math.sin(self._rotation[0]) * math.cos(self._rotation[1])
 
-        self.position[:] = self.target_pos + self.direction * self.orbit_dist
+        self.position[:] = self._target_pos + self.direction * self._orbit_dist
 
     def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
         """
@@ -196,7 +226,7 @@ class SSVOrbitCameraController(SSVCameraController):
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
-        if np.any(mouse_down):
+        if mouse_down[0] or mouse_down[1] or mouse_down[2]:
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
                 self._mouse_old_pos[:] = mouse_pos
@@ -206,8 +236,8 @@ class SSVOrbitCameraController(SSVCameraController):
         if mouse_down[0]:
             # Orbit
             if self._mouse_was_pressed:
-                self._rotation -= (np.array(mouse_pos) - self._mouse_old_pos) * self.pan_speed
-                self._rotation[1] = min(max(self._rotation[1], -math.pi/2), math.pi/2)
+                self._rotation -= (np.array(mouse_pos, dtype=np.int32) - self._mouse_old_pos) * self.pan_speed
+                self._rotation[1] = min(max(self._rotation[1], -math.pi/2 + 1e-6), math.pi/2 - 1e-6)
 
                 self._update_direction_position()
 
@@ -215,8 +245,8 @@ class SSVOrbitCameraController(SSVCameraController):
         elif mouse_down[2]:
             # Pan
             if self._mouse_was_pressed:
-                mouse_delta = np.append((np.array(mouse_pos) - self._mouse_old_pos) * self.pan_speed, (0, 0))
-                self.target_pos += (self.rotation_matrix @ mouse_delta)[:3]
+                mouse_delta = np.append((np.array(mouse_pos, dtype=np.float32) - self._mouse_old_pos) * self.pan_speed, (0, 0))
+                self._target_pos += (self.rotation_matrix @ mouse_delta)[:3]
 
                 self._update_direction_position()
 

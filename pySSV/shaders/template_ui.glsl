@@ -72,6 +72,25 @@ layout(location = 3) in flat vec3 v_size;
 float median(vec3 x) {
     return max(min(x.r, x.g), min(max(x.r, x.g), x.b));
 }
+float contrast(float x, float k)
+{
+    k = 1.-k;
+    x = .5-x;
+    float s = sign(x);
+    x = 2.*abs(x);
+    return 0.5 + 0.5 * s * x / (x * (k - 1.0) - k);
+}
+float hint(float mask, float sdf) {
+    // This function uses a heuristic to try to hint the font by forcing
+    vec2 deriv = normalize(vec2(abs(dFdx(sdf)), abs(dFdy(sdf))));
+    float hint = abs(deriv.x-deriv.y)*2.-1.;
+    //hint *= hint;
+    hint = abs(hint); // Hint horizontal, vertical, and 45deg segments
+    //hint = max(hint, 0.); // Only hint horizontal and vertical segments
+    //hint = max(-hint, 0.); // Only hint 45deg segments
+    mask = contrast(mask, hint);
+    return mask;
+}
 #endif // T_SUPPORT_TEXT
 
 void main() {
@@ -83,14 +102,17 @@ void main() {
         // See also: https://cdn.cloudflare.steamstatic.com/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf
         float smoothing = abs(dFdy(v_char.y))*40.;
         float sdf = median(texture(uFontTex, v_char.xy).rgb);
-        fragColor.a *= smoothstep(max(v_char.z - smoothing, 0.05), min(v_char.z + smoothing, 0.95), sdf);
+        float mask = smoothstep(max(v_char.z - smoothing, 0.05), min(v_char.z + smoothing, 0.95), sdf);
+        // Heuristic based hinting works, but has artifacts...
+        //mask = hint(mask, sdf);
+        fragColor.a *= mask;
         #ifdef T_SUPPORT_SHADOW
             float shadow_sdf = median(texture(uFontTex, v_char.xy-0.01).rgb);
-            float shadow = smoothstep(max(v_char.z - smoothing, 0.05), min(v_char.z + smoothing, 0.95), shadow_sdf);
-            float shadow_exp = smoothstep(max(v_char.z-.2 - smoothing, 0.05), min(v_char.z-.1 + smoothing, 0.95), shadow_sdf);
+            float shadow = smoothstep(max(v_char.z - smoothing*2., 0.05), min(v_char.z + smoothing*2., 0.95), shadow_sdf);
+            float shadow_exp = smoothstep(max(v_char.z-.2 - smoothing, 0.05), min(v_char.z-.2 + smoothing, 0.95), shadow_sdf);
             float shadow_alpha = max(shadow_exp-fragColor.a, 0.);
             fragColor.rgb = (fragColor.rgb*0.2)*shadow_alpha + fragColor.rgb*(1.-shadow_alpha);
-            fragColor.a = min(fragColor.a+shadow, 1.);
+            fragColor.a = min(fragColor.a+shadow*0.75, 1.);
         #endif // T_SUPPORT_SHADOW
     #endif // T_SUPPORT_TEXT
 

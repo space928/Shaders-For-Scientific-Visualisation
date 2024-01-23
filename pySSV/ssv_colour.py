@@ -34,6 +34,16 @@ class Colour:
         else:
             raise TypeError(f"Can't multiply Colour by {type(other)}!")
 
+    def __add__(self, other):
+        if isinstance(other, Colour):
+            return Colour(self.r+other.r, self.g+other.g, self.b+other.b, self.a+other.a)
+        elif isinstance(other, float) or isinstance(other, int):
+            return Colour(self.r + other, self.g + other, self.b + other, self.a + other)
+        elif isinstance(other, tuple) and len(other) >= 4:
+            return Colour(self.r + other[0], self.g + other[1], self.b + other[2], self.a + other[3])
+        else:
+            raise TypeError(f"Can't add Colour to {type(other)}!")
+
     @property
     def astuple(self) -> tuple[float, float, float, float]:
         """Gets the (r, g, b, a) tuple of this colour."""

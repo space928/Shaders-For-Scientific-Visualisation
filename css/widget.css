@@ -33,7 +33,7 @@
 }
 
 .ssv-render-viewport {
-
+  transform: scaleY(-1);
 }
 
 .ssv-status-bar {
@@ -110,4 +110,21 @@
 
 .ssv-button:active {
   background-color: var(--ssv-bg-color2);
+}
+
+.ssv-status-frame-stats table {
+  display: contents;
+}
+
+.ssv-status-frame-stats tbody {
+  text-align: left;
+  font-family: monospace;
+}
+
+.ssv-status-frame-stats td {
+  padding: 0;
+}
+
+.ssv-status-frame-stats td:nth-last-child(n+1) {
+  padding-right: 16px;
 }

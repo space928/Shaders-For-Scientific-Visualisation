@@ -1,6 +1,7 @@
 #  Copyright (c) 2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import copy
+import math
 
 import numpy as np
 import numpy.typing as npt
@@ -77,6 +78,17 @@ class Rect:
 
     def __str__(self):
         return f"Rect[x: {self.x}, y: {self.y}, width: {self.width}, height: {self.height}]"
+
+
+class CachedVertexArray:
+    """
+    Stores an SSVVertexBuffer and a reusable numpy vertex array.
+
+    :meta private:
+    """
+    vertex_buff: SSVVertexBuffer
+    v_array: npt.NDArray
+    used_space: int
 
 
 SSVGUIDrawDelegate = NewType("SSVGUIDrawDelegate", Callable[["SSVGUI", Rect], None])
@@ -255,7 +267,7 @@ class SSVGUI:
         self._on_post_gui_callback: SSVCallbackDispatcher[Callable[[SSVGUI], None]] = SSVCallbackDispatcher()
 
         self._resolution = render_buffer.size
-        self._vb_cache: dict[int, tuple[SSVVertexBuffer, npt.NDArray]] = {}
+        self._vb_cache: dict[int, CachedVertexArray] = {}
         self._layout_groups: list[SSVGUILayoutContainer] = []
         self._capturing_control_ind = -1
         self._control_ind = 0
@@ -263,7 +275,7 @@ class SSVGUI:
         self._layout_control_height = 26
         self._layout_control_width = 400
         self._padding = (2, 2, 2, 2)
-        self._rounding_radius = 5
+        self._rounding_radius = 3
         # TODO: Custom fonts support
         self._font = ssv_font_noto_sans_sb
 
@@ -290,8 +302,9 @@ class SSVGUI:
         if should_set_logging_stream and not self._set_logging_stream:
             self.canvas._set_logging_stream()
             self._set_logging_stream = True
-        for k, v in self._vb_cache.items():
-            self._vb_cache[k] = (v[0], np.empty(0, np.float32))
+        for v in self._vb_cache.values():
+            # Reset all the cached arrays
+            v.used_space = 0
         self._layout_groups.clear()
 
         # All gui elements live in one big vertical layout element
@@ -299,24 +312,48 @@ class SSVGUI:
         self.begin_vertical()
         self._on_gui_callback(self)
         self._layout_groups[0].draw(self, Rect(0, 0, self._resolution[0], self._resolution[1]))
+
+        # Update all the vertex buffers using the cached arrays
         for k, v in self._vb_cache.items():
-            v[0].update_vertex_buffer(v[1], SSVGUIShaderMode.get_vertex_attributes(k))
+            v.vertex_buff.update_vertex_buffer(v.v_array[:v.used_space], SSVGUIShaderMode.get_vertex_attributes(k))
+            # If the cache array has got much larger than the amount of used space, then trim it
+            if v.v_array.shape[0] > v.used_space * 2:
+                # log(f"Trimming v_array for type={SSVGUIShaderMode(k).name} "
+                #     f"usage={v.used_space}/{v.v_array.shape[0]}...", severity=logging.INFO)
+                v.v_array = v.v_array[:v.used_space]
+
         self._last_mouse_down = self.canvas.mouse_down[0]
         self._on_post_gui_callback(self)
 
-    def _get_vertex_buffer(self, render_type: int) -> npt.NDArray:
+    def _get_vertex_buffer(self, render_type: int, requested_space: int) -> npt.NDArray:
         """
-        Gets the current vertex array for a given render type.
+        Gets a vertex buffer array for the given render type to write new vertices into.
+
+        Creates a new vertex buffer and array for the render_type if one doesn't already exist in the cache.
 
         :param render_type: an ``SSVGUIShaderMode`` with the type of shader needed.
-        :return: the current vertex array for this shader type.
+        :param requested_space: how many array items of space
+        :return: a slice of a vertex array to write into; all the requested space should be filled.
         """
         if render_type in self._vb_cache:
-            return self._vb_cache[render_type][1]
+            cached = self._vb_cache[render_type]
+            # Expand the cached array if needed
+            if cached.v_array.shape[0] < cached.used_space + requested_space:
+                # log(f"Expanding v_array for type={SSVGUIShaderMode(render_type).name} "
+                #     f"usage={cached.used_space}/{cached.v_array.shape[0]} "
+                #     f"(needed={cached.used_space + requested_space})...",
+                #     severity=logging.INFO)
+                # Get twice as much space as we need, there's a good chance more space will be requested soon...
+                cached.v_array = np.pad(cached.v_array, (0, requested_space*2), 'empty')
+            ret = cached.v_array[cached.used_space:cached.used_space + requested_space]
+            cached.used_space += requested_space
+            return ret
 
-        vb = self.render_buffer.vertex_buffer()
-        v_array = np.empty(0, dtype=np.float32)
-        self._vb_cache[render_type] = vb, v_array
+        cached = CachedVertexArray()
+        cached.vertex_buff = self.render_buffer.vertex_buffer()
+        cached.v_array = np.empty(requested_space, dtype=np.float32)
+        cached.used_space = requested_space
+        self._vb_cache[render_type] = cached
         options = []
         if SSVGUIShaderMode.TRANSPARENT & render_type > 0:
             options.append("--support_alpha")
@@ -328,18 +365,11 @@ class SSVGUI:
             options.append("--support_shadow")
         if SSVGUIShaderMode.ROUNDING & render_type > 0:
             options.append("--support_rounding")
-            # options.append("--rounding_radius 20.")
         if SSVGUIShaderMode.OUTLINE & render_type > 0:
             options.append("--support_outline")
-        vb.shader(f"#pragma SSV ui {' '.join(options)}")
+        cached.vertex_buff.shader(f"#pragma SSV ui {' '.join(options)}")
 
-        return v_array
-
-    def _update_vertex_buffer(self, render_type: int, vertex_array: npt.NDArray):
-        assert render_type in self._vb_cache
-
-        vb = self._vb_cache[render_type][0]
-        self._vb_cache[render_type] = vb, vertex_array
+        return cached.v_array
 
     @property
     def layout_control_height(self) -> int:
@@ -521,19 +551,20 @@ class SSVGUI:
          :param squeeze: whether this layout group should attempt to squeeze the elements contained within if they would
                          have otherwise overflowed.
          """
-        layout = SSVGUILayoutContainer(self, True, enabled, squeeze, pad)
+        # Dereferencing the 'enabled' value here means that it won't have been updated to the latest value from this
+        # GUI update yet, but doing so prevents layout issues due to a race condition.
+        _enabled = False
+        if isinstance(enabled, Reference):
+            _enabled = enabled.result
+        else:
+            _enabled = enabled
+        layout = SSVGUILayoutContainer(self, True, _enabled, squeeze, pad)
 
         def pre_layout(gui: "SSVGUI") -> tuple[int, int]:
-            if isinstance(enabled, Reference):
-                if not enabled.result:
-                    min_height = 0
-                else:
-                    min_height = layout.min_height
-                # min_height = layout.min_height
-            elif not enabled:
-                min_height = 0
-            else:
+            if _enabled:
                 min_height = layout.min_height
+            else:
+                min_height = 0
             return self._layout_control_width if width is None else width, min_height
 
         if len(self._layout_groups) > 0:
@@ -600,20 +631,18 @@ class SSVGUI:
             if colour.a != 1:
                 render_mode = SSVGUIShaderMode.TRANSPARENT
 
-            verts = gui._get_vertex_buffer(render_mode)
+            verts = gui._get_vertex_buffer(render_mode, 6 * 6)
             col = colour.astuple
             # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour)
             x0, x1, y0, y1 = gui._get_rect_corners(bounds, rect)
-            n_verts = [x0, y0, *col,
-                       x1, y0, *col,
-                       x0, y1, *col,
+            verts[:] = (x0, y0, *col,
+                        x1, y0, *col,
+                        x0, y1, *col,
 
-                       x0, y1, *col,
-                       x1, y0, *col,
-                       x1, y1, *col]
-            verts.resize()
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                        x0, y1, *col,
+                        x1, y0, *col,
+                        x1, y1, *col)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None, overlay_last=overlay_last)
@@ -642,27 +671,27 @@ class SSVGUI:
             else:
                 _radius = radius
 
-            verts = gui._get_vertex_buffer(render_mode)
+            verts = gui._get_vertex_buffer(render_mode, (2+4+2+2+1)*6)
             col = colour.astuple
             # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
             # vec2 texcoord, vec2 size, float radius)
             x0, x1, y0, y1 = gui._get_rect_corners(bounds, rect)
-            n_verts = [x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+            verts[:] = (x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
+                        x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                        x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
 
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius]
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                        x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+                        x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                        x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius)
+            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None, overlay_last=overlay_last)
 
     def label(self, text: str, colour: Colour = ssv_colour.ui_text, font_size: Optional[float] = None,
               x_offset: int = 0, weight: float = 0.5, italic: bool = False, shadow: bool = False,
-              align: TextAlign = TextAlign.LEFT,
+              align: TextAlign = TextAlign.LEFT, enforce_hinting: bool = True,
               rect: Optional[Rect] = None, overlay_last: bool = False):
         """
         Creates a label GUI element.
@@ -680,6 +709,10 @@ class SSVGUI:
         :param shadow: whether the text should be rendered with a shadow. This incurs a very small extra rendering
                        cost, and tends to have visual artifacts when the font weight is high.
         :param align: the horizontal alignment of the text.
+        :param enforce_hinting: this option applies rounding to the font size and position to force it to line up with
+                                the pixel grid to improve sharpness. This is only effective if the font texture was
+                                rendered with hinting enabled in the first place. This can result in aliasing when
+                                animating font size/text position.
         :param rect: optionally, the absolute coordinates of the rectangle to draw. These will be clipped to fit
                      within the current layout group.
         :param overlay_last: whether the layout engine should overlay this element onto the last drawn element.
@@ -690,12 +723,18 @@ class SSVGUI:
             if shadow:
                 render_mode |= SSVGUIShaderMode.SHADOWED
 
+            # Font sizing & positioning
+            _font_size = (font_size if font_size is not None else self._font.size)
+            if enforce_hinting:
+                _font_size = round(_font_size)
             if font_size is not None:
-                scale = font_size / self._font.size
+                scale = _font_size / self._font.size
             else:
                 scale = 1
 
-            shear_x = -0.2 * (font_size if font_size is not None else self._font.size) if italic else 0
+            _weight = weight
+
+            shear_x = -0.2 * _font_size if italic else 0
             bx, by, bwidth, bheight = (bounds.x + self._padding[0] + x_offset, bounds.y + self._padding[1],
                                        bounds.width - self._padding[2], bounds.height + self._padding[3])
             if rect is not None:
@@ -725,12 +764,23 @@ class SSVGUI:
                     [self._font.chars.get(char, self._font.chars[' ']).x_advance for char in text]) * scale
                 draw_x = max_x - fulltext_width
 
-            verts = gui._get_vertex_buffer(render_mode)
-            col = colour.astuple
-            n_verts = []
+            char_defs = [self._font.chars.get(char, self._font.chars[' ']) for char in text]
+            # Trim the chars to fit the bounds
+            trim_x = draw_x
+            for i, c in enumerate(char_defs):
+                trim_x += c.x_advance * scale
+                if trim_x > max_x:
+                    # This char won't fit...
+                    char_defs = char_defs[:i]
+                    break
 
-            for char in text:
-                char_def = self._font.chars.get(char, self._font.chars[' '])
+            verts = gui._get_vertex_buffer(render_mode, (2+4+2+1) * 6 * len(char_defs))
+            col = colour.astuple
+            vert_ind = 0
+
+            if enforce_hinting:
+                draw_x, draw_y = round(draw_x), round(draw_y)
+            for char_def in char_defs:
                 # Compute the pixel space coordinates of the character quad
                 x0 = draw_x + char_def.x_offset * scale
                 x1 = draw_x + char_def.x_offset * scale + char_def.width * scale
@@ -741,19 +791,23 @@ class SSVGUI:
                 bm_x1 = (char_def.x + char_def.width) / font_width
                 bm_y0 = char_def.y / font_height
                 bm_y1 = (char_def.y + char_def.height) / font_height
-                # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour, vec2 char)
-                n_verts.extend([x0, y0, *col, bm_x0, bm_y0, 1. - weight,
-                                x1, y0, *col, bm_x1, bm_y0, 1. - weight,
-                                x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - weight,
+                # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour, vec2 char,
+                # float weight)
+                verts[vert_ind:vert_ind+(2+4+2+1)*6] = (
+                    x0, y0, *col, bm_x0, bm_y0, 1. - _weight,
+                    x1, y0, *col, bm_x1, bm_y0, 1. - _weight,
+                    x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - _weight,
 
-                                x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - weight,
-                                x1, y0, *col, bm_x1, bm_y0, 1. - weight,
-                                x1 + shear_x, y1, *col, bm_x1, bm_y1, 1. - weight])
+                    x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - _weight,
+                    x1, y0, *col, bm_x1, bm_y0, 1. - _weight,
+                    x1 + shear_x, y1, *col, bm_x1, bm_y1, 1. - _weight
+                )
+                vert_ind += (2+4+2+1)*6
                 draw_x += char_def.x_advance * scale
-                if draw_x > max_x:
-                    break
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                if enforce_hinting:
+                    draw_x = round(draw_x)
+            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None, overlay_last=overlay_last)
@@ -785,7 +839,7 @@ class SSVGUI:
         def draw(gui: SSVGUI, bounds: Rect):
             render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.ROUNDING
 
-            verts = gui._get_vertex_buffer(render_mode)
+            verts = gui._get_vertex_buffer(render_mode, (2+4+2+2+1)*6)
             # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
             # vec2 texcoord, vec2 size, float radius)
             x0, x1, y0, y1 = gui._get_rect_corners(bounds, rect)
@@ -817,17 +871,17 @@ class SSVGUI:
                 if click:
                     col *= 0.8
                 elif hover:
-                    col *= 1.4
+                    col += .3
                 col = col.astuple
-            n_verts = [x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+            verts[:] = (x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
+                        x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                        x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
 
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius]
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                        x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+                        x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                        x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius)
+            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None)
@@ -863,7 +917,7 @@ class SSVGUI:
         def draw(gui: SSVGUI, bounds: Rect):
             render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.ROUNDING | SSVGUIShaderMode.OUTLINE
 
-            verts = gui._get_vertex_buffer(render_mode)
+            verts = gui._get_vertex_buffer(render_mode, (2+4+2+2+1) * 6 * 2)
             # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
             # vec2 texcoord, vec2 size, float radius)
             x0, x1, y0, y1 = gui._get_rect_corners(bounds, rect)
@@ -889,14 +943,16 @@ class SSVGUI:
                 pos = min(max(pos, 0), 1)
                 pos = (pos * (max_value - min_value) + min_value)
                 if power != 1:
-                    pos = (pos ** power) / (max_value**power) * max_value
+                    sign = pos
+                    pos = math.copysign((abs(pos) ** power) / (max_value**power) * max_value, sign)
                 if step_size > 0:
                     pos = round(pos/step_size)*step_size
 
             res.result = pos
 
             if power != 1:
-                pos = (pos * (max_value ** power) / max_value) ** (1/power)
+                sign = pos
+                pos = math.copysign((abs(pos) * (max_value ** power) / max_value) ** (1/power), sign)
             handle_x = (pos - min_value) / (max_value - min_value)
             handle_x = handle_x * (x1 - x0 - handle_thickness) + x0 + half_h_thick
 
@@ -927,23 +983,23 @@ class SSVGUI:
                     col *= 1.4
                 col = col.astuple
             # Track
-            n_verts = [tx0, ty0, *col_track, 0, 0, bounds.width, track_thickness, 1.,
-                       tx1, ty0, *col_track, 1, 0, bounds.width, track_thickness, 1.,
-                       tx0, ty1, *col_track, 0, 1, bounds.width, track_thickness, 1.,
+            verts[:] = (tx0, ty0, *col_track, 0, 0, bounds.width, track_thickness, 1.,
+                        tx1, ty0, *col_track, 1, 0, bounds.width, track_thickness, 1.,
+                        tx0, ty1, *col_track, 0, 1, bounds.width, track_thickness, 1.,
 
-                       tx0, ty1, *col_track, 0, 1, bounds.width, track_thickness, 1.,
-                       tx1, ty0, *col_track, 1, 0, bounds.width, track_thickness, 1.,
-                       tx1, ty1, *col_track, 1, 1, bounds.width, track_thickness, 1.]
-            # Handle
-            n_verts.extend([hx0, hy0, *col, 0, 0, handle_thickness, handle_thickness, 10.,
-                            hx1, hy0, *col, 1, 0, handle_thickness, handle_thickness, 10.,
-                            hx0, hy1, *col, 0, 1, handle_thickness, handle_thickness, 10.,
+                        tx0, ty1, *col_track, 0, 1, bounds.width, track_thickness, 1.,
+                        tx1, ty0, *col_track, 1, 0, bounds.width, track_thickness, 1.,
+                        tx1, ty1, *col_track, 1, 1, bounds.width, track_thickness, 1.,
+                        # Handle
+                        hx0, hy0, *col, 0, 0, handle_thickness, handle_thickness, 10.,
+                        hx1, hy0, *col, 1, 0, handle_thickness, handle_thickness, 10.,
+                        hx0, hy1, *col, 0, 1, handle_thickness, handle_thickness, 10.,
 
-                            hx0, hy1, *col, 0, 1, handle_thickness, handle_thickness, 10.,
-                            hx1, hy0, *col, 1, 0, handle_thickness, handle_thickness, 10.,
-                            hx1, hy1, *col, 1, 1, handle_thickness, handle_thickness, 10.])
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                        hx0, hy1, *col, 0, 1, handle_thickness, handle_thickness, 10.,
+                        hx1, hy0, *col, 1, 0, handle_thickness, handle_thickness, 10.,
+                        hx1, hy1, *col, 1, 1, handle_thickness, handle_thickness, 10.)
+            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self.begin_horizontal(squeeze=True)
         self._layout_groups[-1].add_element(draw, self._layout_control_height, self._layout_control_height,
@@ -976,9 +1032,6 @@ class SSVGUI:
         def draw(gui: SSVGUI, bounds: Rect):
             render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.ROUNDING | SSVGUIShaderMode.OUTLINE
 
-            verts = gui._get_vertex_buffer(render_mode)
-            # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
-            # vec2 texcoord, vec2 size)
             x0, x1, y0, y1 = gui._get_rect_corners(bounds, rect)
             hover = (x0 <= gui.canvas.mouse_pos[0] <= x1) and (y0 <= gui._resolution[1] - gui.canvas.mouse_pos[1] <= y1)
             if gui._is_capturing:
@@ -1017,33 +1070,37 @@ class SSVGUI:
                 elif hover:
                     col *= 1.4
                 col = col.astuple
-            n_verts = [x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+            verts = gui._get_vertex_buffer(render_mode, (2+4+2+2+1)*(6*3 if checked else 6))
+            # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
+            # vec2 texcoord, vec2 size, float radius)
+            verts[:(2+4+2+2+1)*6] = (x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
+                                     x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                                     x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
 
-                       x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
-                       x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
-                       x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius]
+                                     x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
+                                     x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
+                                     x1, y1, *col, 1, 1, bounds.width, bounds.height, _radius)
             if checked:
                 check_col = ssv_colour.ui_element_bg_hover.astuple
-                # \
-                n_verts.extend([x0, (y0 * .9 + y1 * .1), *check_col, 0, .1, bounds.width, bounds.height, _radius,
-                                (x0 * .9 + x1 * .1), y0, *check_col, .1, 0, bounds.width, bounds.height, _radius,
-                                (x0 * .1 + x1 * .9), y1, *check_col, .9, 1, bounds.width, bounds.height, _radius,
+                verts[(2+4+2+2+1)*6:] = (
+                    # \
+                    x0, (y0 * .9 + y1 * .1), *check_col, 0, .1, bounds.width, bounds.height, _radius,
+                    (x0 * .9 + x1 * .1), y0, *check_col, .1, 0, bounds.width, bounds.height, _radius,
+                    (x0 * .1 + x1 * .9), y1, *check_col, .9, 1, bounds.width, bounds.height, _radius,
 
-                                (x0 * .1 + x1 * .9), y1, *check_col, .9, 1, bounds.width, bounds.height, _radius,
-                                (x0 * .9 + x1 * .1), y0, *check_col, .1, 0, bounds.width, bounds.height, _radius,
-                                x1, (y0 * .1 + y1 * .9), *check_col, 1, .9, bounds.width, bounds.height, _radius])
-                # /
-                n_verts.extend([(x0 * .1 + x1 * .9), y0, *check_col, .9, 0, bounds.width, bounds.height, _radius,
-                                x1, (y0 * .9 + y1 * .1), *check_col, 1, .1, bounds.width, bounds.height, _radius,
-                                x0, (y0 * .1 + y1 * .9), *check_col, 0, .9, bounds.width, bounds.height, _radius,
+                    (x0 * .1 + x1 * .9), y1, *check_col, .9, 1, bounds.width, bounds.height, _radius,
+                    (x0 * .9 + x1 * .1), y0, *check_col, .1, 0, bounds.width, bounds.height, _radius,
+                    x1, (y0 * .1 + y1 * .9), *check_col, 1, .9, bounds.width, bounds.height, _radius,
+                    # /
+                    (x0 * .1 + x1 * .9), y0, *check_col, .9, 0, bounds.width, bounds.height, _radius,
+                    x1, (y0 * .9 + y1 * .1), *check_col, 1, .1, bounds.width, bounds.height, _radius,
+                    x0, (y0 * .1 + y1 * .9), *check_col, 0, .9, bounds.width, bounds.height, _radius,
 
-                                x1, (y0 * .9 + y1 * .1), *check_col, 1, .1, bounds.width, bounds.height, _radius,
-                                x0, (y0 * .1 + y1 * .9), *check_col, 0, .9, bounds.width, bounds.height, _radius,
-                                (x0 * .9 + x1 * .1), y1, *check_col, .1, 1, bounds.width, bounds.height, _radius])
-            verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            self._update_vertex_buffer(render_mode, verts)
+                    x1, (y0 * .9 + y1 * .1), *check_col, 1, .1, bounds.width, bounds.height, _radius,
+                    x0, (y0 * .1 + y1 * .9), *check_col, 0, .9, bounds.width, bounds.height, _radius,
+                    (x0 * .9 + x1 * .1), y1, *check_col, .1, 1, bounds.width, bounds.height, _radius)
+            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
+            # self._update_vertex_buffer(render_mode, verts)
 
         self.begin_horizontal(squeeze=False)
         self._layout_groups[-1].add_element(draw, self._layout_control_height, self._layout_control_height,

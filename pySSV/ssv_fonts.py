@@ -1,6 +1,5 @@
 #  Copyright (c) 2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-import io
 import logging
 import os.path
 from importlib.resources import as_file, files
@@ -107,6 +106,12 @@ class SSVFont:
             if self.pages != 1:
                 raise ValueError(f"Font {self.font_name} has {self.pages} font pages, currently only 1 page is "
                                  f"supported.")
+
+            distance_field = bm_font.find("distanceField")
+            if distance_field is not None:
+                self.sdf_distance = int(distance_field.get("distanceRange"))
+            else:
+                self.sdf_distance = None
 
             self.bitmap_path = bm_font.find("pages").find("page").get("file")
         except Exception as e:

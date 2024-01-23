@@ -1,7 +1,9 @@
 #  Copyright (c) 2023 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
+import time
 from typing import Optional, Any, Union, Callable, NewType, Type
+from threading import Thread
 import numpy.typing as npt
 try:
     from PIL import Image
@@ -12,12 +14,15 @@ except ImportError:
 
 from .ssv_camera import SSVCameraController, SSVOrbitCameraController, SSVLookCameraController, MoveDir
 from .ssv_render_process_client import SSVRenderProcessClient
+from .ssv_render_process_server import SSVStreamingMode
 from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
 from .ssv_logging import log, set_output_stream
 from .ssv_render_buffer import SSVRenderBuffer
 from .ssv_texture import SSVTexture
 from .ssv_callback_dispatcher import SSVCallbackDispatcher
+from .ssv_canvas_stream_server import SSVCanvasStreamServer
+from .environment import ENVIRONMENT, Env
 
 
 OnMouseDelegate = NewType("OnMouseDelegate", Callable[[tuple[bool, bool, bool], tuple[int, int], float], None])
@@ -72,7 +77,7 @@ class SSVCanvas:
         self._size = size
         self._standalone = standalone
         self._target_framerate = target_framerate
-        self._streaming_mode = "jpg"
+        self._streaming_mode = SSVStreamingMode.JPG
         self._backend = backend
         self._use_renderdoc = False
         self._on_mouse_event: SSVCallbackDispatcher[OnMouseDelegate] = SSVCallbackDispatcher()
@@ -98,19 +103,26 @@ class SSVCanvas:
             self._widget.on_mouse_wheel(self.__on_mouse_wheel)
             if self._use_renderdoc:
                 self._widget.on_renderdoc_capture(self.__on_renderdoc_capture)
+            self._update_frame_rate_task: Optional[Thread] = None
             self._set_logging_stream()
             # set_output_stream(sys.stdout)
-        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else 5,
+        self._render_timeout = 10
+        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else self._render_timeout,
                                                              self._use_renderdoc)
         if supports_line_directives is None:
             supported_extensions = self._render_process_client.get_supported_extensions()
             supports_line_directives = "GL_ARB_shading_language_include" in supported_extensions
         self._preprocessor = SSVShaderPreprocessor(gl_version="420", supports_line_directives=supports_line_directives)
 
+        self._supports_websockets = ENVIRONMENT != Env.COLAB or ENVIRONMENT != Env.JUPYTERLITE
+        self._websocket_url: Optional[str] = None
+        self._canvas_stream_server: Optional[SSVCanvasStreamServer] = None
+
         self._mouse_pos = (0, 0)
         self._mouse_down = (False, False, False)
         # Cache the last parameters to the run() method for the widget's "play" button to use
         self._last_run_settings = {}
+        self._paused = False
 
         # Set up a default render buffer
         self._main_render_buffer = SSVRenderBuffer(self, self._render_process_client, self._preprocessor,
@@ -125,22 +137,61 @@ class SSVCanvas:
         self.stop()
         self._render_process_client.stop()
 
-    def __on_render(self, stream_data):
-        self._widget.stream_data = stream_data
-        # self.main_camera.position[2] = math.sin(time.time())
-        # self._render_process_client.update_uniform(None, None, "uViewMat", self.main_camera.view_matrix)
+    def __update_frame_rate_task(self):
+        """
+        A task to periodically update the frame rate display in the widget.
+        """
+        while self._render_process_client.is_alive:
+            frame_times = self._render_process_client.get_frame_times(10)
+            if frame_times is not None:
+                self._widget.frame_rate = min(1 / (frame_times[0] + frame_times[2]),
+                                              self._target_framerate)  # Avg frame+encode
+                self._widget.frame_times = (
+                    f"Avg {frame_times[0] * 1000:.3f} ms;Avg encode {frame_times[2] * 1000:.3f} ms;"
+                    f"Max {frame_times[1] * 1000:.3f} ms;Max encode {frame_times[3] * 1000:.3f} ms")
+            else:
+                self._widget.frame_rate = 0
+                self._widget.frame_times = "Took longer than 10s to get stats;;;"
+            # No point making this async if get_frame_times() is blocking; might as well just spin up a new thread
+            # await asyncio.sleep(0.5)
+            time.sleep(0.5)
+
+    def __on_render(self, stream_data: Union[bytes, str]):
+        if self._streaming_mode == SSVStreamingMode.MJPEG and self._canvas_stream_server is not None:
+            # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
+            self._canvas_stream_server.send(stream_data)
+        elif self._supports_websockets and self._canvas_stream_server is not None:
+            # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
+            if isinstance(stream_data, str):
+                stream_data = stream_data.encode('utf-8')
+            self._canvas_stream_server.send(stream_data)
+        else:
+            if isinstance(stream_data, str):
+                self._widget.stream_data_ascii = stream_data
+            else:
+                self._widget.stream_data_binary = stream_data
+            # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
+            # self._widget.send({"stream_data": len(stream_data)}, buffers=[stream_data])
 
     def __on_heartbeat(self):
         self._render_process_client.send_heartbeat()
         self._widget.status_connection = self._render_process_client.is_alive
+        if self._canvas_stream_server is not None:
+            self._canvas_stream_server.heartbeat()
 
     def __on_play(self):
-        self.run(**self._last_run_settings)
+        # self.run(**self._last_run_settings)
+        self._paused = False
+        if "stream_quality" in self._last_run_settings:
+            self._render_process_client.render(self._target_framerate, str(self._streaming_mode),
+                                               self._last_run_settings["stream_quality"])
 
     def __on_stop(self):
         self.stop()
 
     def __on_click(self, down: bool, button: int):
+        if self._paused:
+            return
         self._mouse_down = (self._mouse_down[0] if button != 0 else down,
                             self._mouse_down[1] if button != 1 else down,
                             self._mouse_down[2] if button != 2 else down)
@@ -150,6 +201,8 @@ class SSVCanvas:
         self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
 
     def __on_key(self, key: str, down: bool):
+        if self._paused:
+            return
         # TODO: Shader uniform/texture for keyboard support
         if key == "ArrowUp" or key == "w" or key == "W" or key == "z" or key == "Z":
             self._main_camera.move(MoveDir.FORWARD)
@@ -159,6 +212,7 @@ class SSVCanvas:
             self._main_camera.move(MoveDir.LEFT)
         elif key == "ArrowRight" or key == "d" or key == "D":
             self._main_camera.move(MoveDir.RIGHT)
+        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
         self._on_keyboard_event(key, down)
 
     def __on_renderdoc_capture(self):
@@ -166,11 +220,15 @@ class SSVCanvas:
         self._render_process_client.renderdoc_capture_frame(None)
 
     def __on_mouse_wheel(self, value: float):
+        if self._paused:
+            return
         self._main_camera.zoom(value * 0.05)
         self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
         self._on_mouse_event(self._mouse_down, self._mouse_pos, value)
 
     def __on_mouse_x_updated(self, x):
+        if self._paused:
+            return
         self._mouse_pos = (x.new, self._mouse_pos[1])
         self._render_process_client.update_uniform(None, None, "uMouse", tuple(self._mouse_pos))
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
@@ -178,6 +236,8 @@ class SSVCanvas:
         self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
 
     def __on_mouse_y_updated(self, y):
+        if self._paused:
+            return
         self._mouse_pos = (self._mouse_pos[0], y.new)
         self._render_process_client.update_uniform(None, None, "uMouse", tuple(self._mouse_pos))
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
@@ -215,7 +275,7 @@ class SSVCanvas:
 
     @property
     def mouse_down(self) -> tuple[bool, bool, bool]:
-        """Gets the current mouse button state as a tuple of ``bool``s. [left, right, middle]"""
+        """Gets the current mouse button state as a tuple of ``bool``. [left, right, middle]"""
         return self._mouse_down
 
     @property
@@ -267,24 +327,35 @@ class SSVCanvas:
         """
         self._on_frame_rendered.register_callback(callback, remove)
 
-    def run(self, stream_mode="jpg", stream_quality: Optional[int] = None, never_kill=False) -> None:
+    def run(self, stream_mode: Union[str, SSVStreamingMode] = SSVStreamingMode.JPG,
+            stream_quality: Optional[float] = None, never_kill=False) -> None:
         """
         Starts the render loop and displays the Jupyter Widget (or render window if in standalone mode).
 
         :param stream_mode: the encoding format to use to transmit rendered frames from the render process to the
-                            Jupyter widget. (Currently supports: `jpg`, `png`).
-        :param stream_quality: the encoding quality to use for the given encoding format. (For advanced users only)
+                            Jupyter widget.
+        :param stream_quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                               (some stream modes support values larger than 100, others clamp it internally), where 100
+                               results in the highest quality. This value is scaled to give a bit rate target or
+                               quality factor for the chosen encoder. Pass in ``None`` to use the encoder's default
+                               quality settings.
         :param never_kill: disables the watchdog responsible for stopping the render process when the widget is no
                            longer being displayed. *Warning*: The only way to stop a renderer started with this enabled
                            is to restart the Jupyter kernel.
         """
+        if isinstance(stream_mode, str):
+            try:
+                stream_mode = SSVStreamingMode(stream_mode)
+            except KeyError:
+                raise KeyError(f"'{stream_mode}' is not a valid streaming mode. Supported streaming modes are: \n"
+                               f"{list(SSVStreamingMode)}")
         self._streaming_mode = stream_mode
         self._last_run_settings = {"stream_mode": stream_mode,
                                    "stream_quality": stream_quality,
                                    "never_kill": never_kill}
+        self._paused = False
 
         if not self._render_process_client.is_alive:
-            log("Render process is no longer connected. Create a new SSVCanvas and try again.", severity=logging.ERROR)
             return
             # raise ConnectionError("Render process is no longer connected. Create a new SSVCanvas and try again.")
 
@@ -294,16 +365,30 @@ class SSVCanvas:
         if not self._standalone:
             from IPython.display import display
             self._widget.streaming_mode = self._streaming_mode
+            self._widget.use_websockets = self._supports_websockets
+            self._widget.canvas_width, self._widget.canvas_height = self._size
+            if self._streaming_mode == SSVStreamingMode.MJPEG:
+                # A bit of a hack for now
+                self._canvas_stream_server = SSVCanvasStreamServer(http=True)
+                self._widget.use_websockets = False
+                self._widget.websocket_url = self._canvas_stream_server.url
+            elif self._supports_websockets:
+                self._canvas_stream_server = SSVCanvasStreamServer()
+                self._widget.websocket_url = self._canvas_stream_server.url
             display(self._widget)
             self._widget.observe(lambda x: self.__on_mouse_x_updated(x), names=["mouse_pos_x"])
             self._widget.observe(lambda y: self.__on_mouse_y_updated(y), names=["mouse_pos_y"])
+            if self._update_frame_rate_task is None or self._update_frame_rate_task.is_alive():
+                self._update_frame_rate_task = Thread(name=f"SSV Canvas Frame Rate Updater - {id(self):#08x}",
+                                                      daemon=True, target=self.__update_frame_rate_task)
+                self._update_frame_rate_task.start()
 
         # Make sure the view and projection matrices are defined before rendering
         self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
         self._render_process_client.update_uniform(None, None, "uProjMat", self._main_camera.projection_matrix)
 
-        self._render_process_client.set_timeout(None if never_kill else 1)
-        self._render_process_client.render(self._target_framerate, self._streaming_mode, stream_quality)
+        self._render_process_client.set_timeout(None if never_kill else self._render_timeout)
+        self._render_process_client.render(self._target_framerate, str(self._streaming_mode), stream_quality)
 
     def stop(self, force=False) -> None:
         """
@@ -312,10 +397,11 @@ class SSVCanvas:
         :param force: kills the render process and releases resources. SSVCanvases cannot be restarted if they have
                       been force stopped.
         """
+        self._paused = True
         if force:
             self._render_process_client.stop()
         else:
-            self._render_process_client.render(0, self._streaming_mode)
+            self._render_process_client.render(0, str(self._streaming_mode))
 
     def shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
                additional_templates: Optional[list[str]] = None,
@@ -512,3 +598,15 @@ class SSVCanvas:
         :param enabled: whether to log frame times.
         """
         self._render_process_client.dbg_log_frame_times(enabled)
+
+    def dbg_capture_frame(self):
+        """
+        Triggers a frame capture with RenderDoc if this canvas has it enabled.
+
+        Due to the asynchronous nature of the renderer, the frame may be capture 1 frame late.
+        """
+        if self._use_renderdoc:
+            log("Capturing frame...", severity=logging.INFO)
+            self._render_process_client.renderdoc_capture_frame(None)
+        else:
+            log("Renderdoc is not enabled on this canvas! Frame will not be captured.", severity=logging.WARN)

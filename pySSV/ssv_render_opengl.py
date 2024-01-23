@@ -41,13 +41,13 @@ class SSVDrawCall:
     """
     Stores a reference to all the objects needed to represent a single draw call belonging to a render buffer.
     """
-    __slots__ = ["order", "vertex_buffer", "index_buffer", "vertex_attributes", "vertex_array", "shader_program",
+    __slots__ = ["order", "vertex_buffer", "index_buffer", "vertex_attributes", "gl_vertex_array", "shader_program",
                  "primitive_type"]
     order: int
     vertex_buffer: Optional[moderngl.Buffer]
     index_buffer: Optional[moderngl.Buffer]
     vertex_attributes: tuple[str, ...]
-    vertex_array: Optional[moderngl.VertexArray]
+    gl_vertex_array: Optional[moderngl.VertexArray]
     shader_program: Optional[moderngl.Program]
     primitive_type: int
 
@@ -56,13 +56,13 @@ class SSVDrawCall:
         self.vertex_buffer = None
         self.index_buffer = None
         self.vertex_attributes = ()
-        self.vertex_array = None
+        self.gl_vertex_array = None
         self.shader_program = None
         self.primitive_type = int(moderngl.TRIANGLES)
 
     def release(self, needs_gc: bool):
         if needs_gc:
-            self.vertex_array.release()
+            self.gl_vertex_array.release()
             self.vertex_buffer.release()
             self.index_buffer.release()
             self.shader_program.release()
@@ -265,21 +265,44 @@ class SSVRenderOpenGL(SSVRender):
             return
 
         if draw_call_uid not in self._render_buffers[frame_buffer_uid].draw_calls:
+            # Create a new draw call
             draw_call = SSVDrawCall()
             draw_call.order = 0
             draw_call.shader_program = None
             self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid] = draw_call
+            draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
+            draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
         else:
+            # Update an existing draw call
             draw_call = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid]
+            if (vertex_array is not None
+                    and draw_call.vertex_buffer is not None
+                    and not isinstance(draw_call.vertex_buffer.mglo, moderngl.InvalidObject)
+                    and draw_call.vertex_buffer.size == len(vertex_array)*vertex_array.dtype.itemsize):
+                draw_call.vertex_buffer.write(vertex_array)
+            else:
+                if draw_call.vertex_buffer is not None:
+                    draw_call.vertex_buffer.release()
+                draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
 
-        draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
-        draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
+            if (index_array is not None
+                    and draw_call.index_buffer is not None
+                    and not isinstance(draw_call.index_buffer.mglo, moderngl.InvalidObject)
+                    and draw_call.index_buffer.size == len(index_array)*index_array.dtype.itemsize):
+                draw_call.index_buffer.write(index_array)
+            else:
+                if draw_call.index_buffer is not None:
+                    draw_call.index_buffer.release()
+                draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
+
         draw_call.vertex_attributes = self._default_vertex_buffer_vertex_attributes if vertex_attributes is None else vertex_attributes
         try:
             if draw_call.shader_program is not None:
-                draw_call.vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
-                                                               *draw_call.vertex_attributes,
-                                                               index_buffer=draw_call.index_buffer)
+                if draw_call.gl_vertex_array is not None:
+                    draw_call.gl_vertex_array.release()
+                draw_call.gl_vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
+                                                                  *draw_call.vertex_attributes,
+                                                                  index_buffer=draw_call.index_buffer)
         except KeyError as e:
             log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader!", severity=logging.ERROR)
             return
@@ -310,7 +333,7 @@ class SSVRenderOpenGL(SSVRender):
         draw_call = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid]
 
         # draw_call.shader_program.release()
-        # draw_call.vertex_array.release()
+        # draw_call.gl_vertex_array.release()
 
         try:
             draw_call.shader_program = (
@@ -326,9 +349,9 @@ class SSVRenderOpenGL(SSVRender):
             # create this vertex array no matter what; even if the user subsequently calls update_vertex_buffer which
             # would replace this vertex array.
             try:
-                draw_call.vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
-                                                               *draw_call.vertex_attributes,
-                                                               index_buffer=draw_call.index_buffer)
+                draw_call.gl_vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
+                                                                  *draw_call.vertex_attributes,
+                                                                  index_buffer=draw_call.index_buffer)
             except KeyError as e:
                 log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader! Check that the attribute "
                     f"is defined in the vertex shader and that it's being used by the shader, otherwise the shader "
@@ -479,10 +502,10 @@ class SSVRenderOpenGL(SSVRender):
             self.ctx.clear()
             # log(f"#### BEGIN DRAW ####", severity=logging.INFO)
             for dc in draw_calls:
-                if dc.vertex_array is not None:
+                if dc.gl_vertex_array is not None:
                     # log(f"DRAW CALL: o={dc.order} v_attrs={dc.vertex_attributes}", severity=logging.INFO)
                     self._bind_textures(dc.shader_program)
-                    dc.vertex_array.render(mode=dc.primitive_type)
+                    dc.gl_vertex_array.render(mode=dc.primitive_type)
 
         if self._renderdoc_is_capturing:
             result = self._renderdoc_api.end_frame_capture(None, None)
