@@ -48,29 +48,36 @@ class SSVCamera:
         self._mouse_old_pos = np.array([0., 0.])
         self._rotation = np.array([math.pi, 0.])
         self._mouse_was_pressed = False
-        self._view_matrix = np.identity(4)
-        self._projection_matrix = np.identity(4)
+        self._view_matrix = np.identity(4, dtype=np.float32)
+        self._projection_matrix = np.identity(4, dtype=np.float32)
         self._up_vec = np.array([0., 1., 0.])
+
+    @property
+    def rotation_matrix(self) -> npt.NDArray[float]:
+        """
+        Gets the current view matrix of the camera, without the translation component.
+        """
+        right = np.cross(self.direction, self._up_vec)
+        right /= np.linalg.norm(right)
+        up = np.cross(right, self.direction)
+        up /= np.linalg.norm(up)
+        rot_matrix = np.identity(4, dtype=np.float32)
+        rot_matrix[0:3, 0] = right
+        rot_matrix[0:3, 1] = up
+        rot_matrix[0:3, 2] = self.direction
+        return rot_matrix
 
     @property
     def view_matrix(self) -> npt.NDArray[float]:
         """
         Gets the current view matrix of the camera.
         """
-        right = np.cross(self.direction, self._up_vec)
-        right /= np.linalg.norm(right)
-        up = np.cross(right, self.direction)
-        up /= np.linalg.norm(up)
-        self._view_matrix = np.identity(4, dtype=np.float32)
-        self._view_matrix[0:3, 0] = right
-        self._view_matrix[0:3, 1] = up
-        self._view_matrix[0:3, 2] = self.direction
         self._view_matrix = np.array((
             (1, 0, 0, 0),
             (0, 1, 0, 0),
             (0, 0, 1, 0),
             (-self.position[0], -self.position[1], -self.position[2], 1),
-        ), dtype=np.float32) @ self._view_matrix
+        ), dtype=np.float32) @ self.rotation_matrix
 
         return self._view_matrix
 
@@ -106,7 +113,7 @@ class SSVCameraController(SSVCamera, ABC):
         self.pan_speed = 0.005
 
     @abstractmethod
-    def mouse_change(self, mouse_pos: list[int], mouse_down: bool):
+    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
         ...
 
     @abstractmethod
@@ -118,14 +125,14 @@ class SSVLookCameraController(SSVCameraController):
     """
     A camera controller which supports mouse look controls.
     """
-    def mouse_change(self, mouse_pos: list[int], mouse_down: bool):
+    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
         """
         Updates the camera with a mouse event.
 
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
-        if mouse_down:
+        if mouse_down[0]:
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
                 self._mouse_old_pos[:] = mouse_pos
@@ -182,28 +189,43 @@ class SSVOrbitCameraController(SSVCameraController):
 
         self.position[:] = self.target_pos + self.direction * self.orbit_dist
 
-    def mouse_change(self, mouse_pos: list[int], mouse_down: bool):
+    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
         """
         Updates the camera with a mouse event.
 
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
-        if mouse_down:
+        if np.any(mouse_down):
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
                 self._mouse_old_pos[:] = mouse_pos
-            else:
+        else:
+            self._mouse_was_pressed = False
+
+        if mouse_down[0]:
+            # Orbit
+            if self._mouse_was_pressed:
                 self._rotation -= (np.array(mouse_pos) - self._mouse_old_pos) * self.pan_speed
                 self._rotation[1] = min(max(self._rotation[1], -math.pi/2), math.pi/2)
 
                 self._update_direction_position()
 
                 # log(f"view_mat=\n{np.transpose(self.view_matrix)}", severity=logging.INFO)
+        elif mouse_down[2]:
+            # Pan
+            if self._mouse_was_pressed:
+                mouse_delta = np.append((np.array(mouse_pos) - self._mouse_old_pos) * self.pan_speed, (0, 0))
+                self.target_pos += (self.rotation_matrix @ mouse_delta)[:3]
 
-                self._mouse_old_pos[:] = mouse_pos
-        else:
-            self._mouse_was_pressed = False
+                self._update_direction_position()
+
+                # log(f"view_mat=\n{np.transpose(self.view_matrix)}", severity=logging.INFO)
+        elif mouse_down[1]:
+            # Zoom
+            pass
+
+        self._mouse_old_pos[:] = mouse_pos
 
     def zoom(self, distance: float):
         """

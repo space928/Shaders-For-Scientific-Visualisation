@@ -12,7 +12,7 @@ from ._frontend import module_name, module_version
 
 
 OnMessageDelegate = NewType("OnMessageDelegate", Callable[[], None])
-OnClickDelegate = NewType("OnClickDelegate", Callable[[bool], None])
+OnClickDelegate = NewType("OnClickDelegate", Callable[[bool, int], None])
 OnKeyDelegate = NewType("OnKeyDelegate", Callable[[str, bool], None])
 OnWheelDelegate = NewType("OnWheelDelegate", Callable[[float], None])
 
@@ -57,9 +57,9 @@ class SSVRenderWidget(DOMWidget):
         elif "stop" in content:
             self._stop_handlers()
         elif "mousedown" in content:
-            self._click_handlers(True)
+            self._click_handlers(True, content["mousedown"])
         elif "mouseup" in content:
-            self._click_handlers(False)
+            self._click_handlers(False, content["mouseup"])
         elif "keydown" in content:
             self._key_handlers(content["keydown"], True)
         elif "keyup" in content:

@@ -2,8 +2,16 @@
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Union
+
+import numpy as np
 import numpy.typing as npt
 import logging
+try:
+    from PIL import Image
+    _PIL_SUPPORTED = True
+except ImportError:
+    Image = None
+    _PIL_SUPPORTED = False
 
 from .ssv_logging import log
 
@@ -115,7 +123,7 @@ def determine_texture_shape(data: npt.NDArray,
 
         if treat_as_normalized_integer \
                 and (data.dtype.itemsize == 1 or data.dtype.itemsize == 2) \
-                and (dtype == "u" or dtype == "i"):
+                and (dtype[0] == "u" or dtype[0] == "i"):
             dtype = "n" + dtype
 
     return components, depth, height, width, dtype
@@ -128,8 +136,9 @@ class SSVTexture:
 
     def __init__(self, texture_uid: Optional[int], render_process_client: SSVRenderProcessClient,
                  preprocessor: SSVShaderPreprocessor,
-                 data: npt.NDArray, uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
-                 override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True):
+                 data: Union[npt.NDArray, Image], uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
+                 override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True,
+                 declare_uniform: bool = True):
         """
         *Used Internally*
 
@@ -138,7 +147,7 @@ class SSVTexture:
         :param texture_uid: the UID to give this texture buffer. Set to ``None`` to generate one automatically.
         :param render_process_client: the render process connection belonging to the canvas.
         :param preprocessor: the preprocessor belonging to the canvas.
-        :param data: a NumPy array containing the image data to copy to the texture.
+        :param data: a NumPy array or a PIL/Pillow Image containing the image data to copy to the texture.
         :param uniform_name: the name of the shader uniform to associate this texture with.
         :param force_2d: when set, forces the texture to be treated as 2-dimensional, even if it could be represented
                          by a 1D texture. This only applies in the ambiguous case where a 2D single component texture
@@ -153,11 +162,17 @@ class SSVTexture:
                                             integers by OpenGL, such that when the texture is sampled values in the
                                             texture are mapped to floats in the range [0, 1] or [-1, 1]. See:
                                             https://www.khronos.org/opengl/wiki/Normalized_Integer for more details.
+        :param declare_uniform: when set, a shader uniform is automatically declared for this uniform in shaders.
         """
         self._texture_uid = id(self) if texture_uid is None else texture_uid
         self._render_process_client = render_process_client
         self._preprocessor = preprocessor
         self._uniform_name = uniform_name
+
+        if _PIL_SUPPORTED:
+            if isinstance(data, Image.Image):
+                data = np.array(data)
+
         if force_2d and len(data.shape) == 2 and data.shape[1] <= 4:
             data = data.reshape((*data.shape, 1))
         if force_3d and len(data.shape) == 3 and data.shape[2] <= 4:
@@ -178,7 +193,10 @@ class SSVTexture:
 
         self._render_process_client.update_texture(self._texture_uid, data, uniform_name, override_dtype, None,
                                                    treat_as_normalized_integer)
-        self._preprocessor.add_dynamic_uniform(self._uniform_name, sampler_type)
+        if declare_uniform:
+            self._preprocessor.add_dynamic_uniform(self._uniform_name, sampler_type)
+
+        self._is_valid = True
 
     @property
     def texture_uid(self) -> int:
@@ -287,6 +305,11 @@ class SSVTexture:
     def anisotropy(self, value: int):
         self._render_process_client.update_texture_sampler(self._texture_uid, anisotropy=value)
 
+    @property
+    def is_valid(self) -> bool:
+        """Gets whether this texture object represents a valid texture that hasn't been destroyed yet."""
+        return self._is_valid
+
     def update_texture(self, data: npt.NDArray,
                        rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]] = None):
         """
@@ -308,6 +331,7 @@ class SSVTexture:
         """
         Destroys this texture object and releases the associated GPU resources.
         """
+        self._is_valid = False
         self._render_process_client.delete_texture(self._texture_uid)
 
     def __del__(self):
