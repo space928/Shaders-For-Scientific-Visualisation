@@ -592,7 +592,10 @@ class SSVCanvas:
         if not pretty_print:
             return shaders
 
-        from ._version import VERSION
+        try:
+            from ._version import __version__  # type: ignore
+        except ImportError:
+            __version__ = "dev"
 
         # Primitive type is always defined but often set to None (so that it defaults to triangles); in this case it
         # isn't relevant to show, so we strip it.
@@ -606,7 +609,7 @@ class SSVCanvas:
                   f"////////////////////////////////////////\n\n" for stage in stages]
         shaders_vals = [f"{shader}\n\n\n" for shader in shaders_vals]
         preproc_src = f"/************************************************************\n" \
-                      f" * {f'pySSV Shader Preprocessor version: {VERSION}':^56} *\n" \
+                      f" * {f'pySSV Shader Preprocessor version: {__version__}':^56} *\n" \
                       f" ************************************************************/\n\n"
         preproc_src += "".join([str(s) for shader in zip(stages, shaders_vals) for s in shader])
 
