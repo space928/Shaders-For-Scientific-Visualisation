@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 import logging
 import time
-import portpicker
+import portpicker  # type: ignore
 from websockets.sync.server import serve, ServerConnection, WebSocketServer
 from websockets import ConnectionClosed
 from threading import Thread, ThreadError, current_thread
@@ -15,7 +15,7 @@ from .ssv_logging import log
 
 
 class SSVCanvasStreamServerHTTP(BaseHTTPRequestHandler):
-    def __init__(self, msg_queue: SimpleQueue[bytes], is_alive: Callable[[], bool], *args, **kwargs):
+    def __init__(self, msg_queue: SimpleQueue, is_alive: Callable[[], bool], *args, **kwargs):
         self._msg_queue = msg_queue
         self._is_alive = is_alive
         super().__init__(*args, **kwargs)
@@ -78,6 +78,7 @@ class SSVCanvasStreamServer:
     def url(self) -> str:
         """Gets the URL of this websocket."""
         if self._http:
+            # noinspection HttpUrlsUsage
             return f"http://{self._hostname}:{self._port}/"
         else:
             return f"ws://{self._hostname}:{self._port}/"

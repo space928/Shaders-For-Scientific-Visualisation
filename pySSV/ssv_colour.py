@@ -1,5 +1,7 @@
 #  Copyright (c) 2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
+from typing import Tuple
+
 
 class Colour:
     """
@@ -45,7 +47,7 @@ class Colour:
             raise TypeError(f"Can't add Colour to {type(other)}!")
 
     @property
-    def astuple(self) -> tuple[float, float, float, float]:
+    def astuple(self) -> Tuple[float, float, float, float]:
         """Gets the (r, g, b, a) tuple of this colour."""
         return self.r, self.g, self.b, self.a
 

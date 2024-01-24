@@ -1,16 +1,16 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
 import time
-from typing import Optional, Any, Union, Callable, NewType, Type
+from typing import Optional, Any, Union, Callable, Dict, List, Tuple
 from threading import Thread
 import numpy.typing as npt
-try:
-    from PIL import Image
-    _PIL_SUPPORTED = True
-except ImportError:
-    Image = None
-    _PIL_SUPPORTED = False
+from PIL import Image
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 from .ssv_camera import SSVCameraController, SSVOrbitCameraController, SSVLookCameraController, MoveDir
 from .ssv_render_process_client import SSVRenderProcessClient
@@ -25,7 +25,7 @@ from .ssv_canvas_stream_server import SSVCanvasStreamServer
 from .environment import ENVIRONMENT, Env
 
 
-OnMouseDelegate = NewType("OnMouseDelegate", Callable[[tuple[bool, bool, bool], tuple[int, int], float], None])
+OnMouseDelegate: TypeAlias = Callable[[Tuple[bool, bool, bool], Tuple[int, int], float], None]
 """
 A callable with parameters matching the signature::
 
@@ -36,7 +36,7 @@ A callable with parameters matching the signature::
 | mouse_pos: a tuple of ints representing the mouse position relative to the canvas in pixels.
 | mouse_wheel_delta: how many pixels the mousewheel has scrolled since the last callback.
 """
-OnKeyDelegate = NewType("OnKeyDelegate", Callable[[str, bool], None])
+OnKeyDelegate: TypeAlias = Callable[[str, bool], None]
 """
 A callable with parameters matching the signature::
 
@@ -47,6 +47,15 @@ A callable with parameters matching the signature::
        https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
 | down: whether the key is being pressed.
 """
+OnFrameRenderedDelegate: TypeAlias = Callable[[float], None]
+"""
+A callable with parameters matching the signature::
+
+    on_key(delta_time: float) -> None:
+        ...
+
+| key: the time in seconds since the last frame was rendered.
+"""
 
 
 class SSVCanvas:
@@ -54,7 +63,7 @@ class SSVCanvas:
     An SSV canvas manages the OpenGL rendering context, shaders, and the jupyter widget
     """
 
-    def __init__(self, size: Optional[tuple[int, int]], backend: str = "opengl", standalone: bool = False,
+    def __init__(self, size: Optional[Tuple[int, int]], backend: str = "opengl", standalone: bool = False,
                  target_framerate: int = 60, use_renderdoc: bool = False,
                  supports_line_directives: Optional[bool] = None):
         """
@@ -82,11 +91,11 @@ class SSVCanvas:
         self._use_renderdoc = False
         self._on_mouse_event: SSVCallbackDispatcher[OnMouseDelegate] = SSVCallbackDispatcher()
         self._on_keyboard_event: SSVCallbackDispatcher[OnKeyDelegate] = SSVCallbackDispatcher()
-        self._on_frame_rendered: SSVCallbackDispatcher[Callable[[], None]] = SSVCallbackDispatcher()
+        self._on_frame_rendered: SSVCallbackDispatcher[OnFrameRenderedDelegate] = SSVCallbackDispatcher()
         self._on_start: SSVCallbackDispatcher[Callable[[], None]] = SSVCallbackDispatcher()
         if use_renderdoc:
             try:
-                from pyRenderdocApp import RENDERDOC_API_1_6_0
+                from pyRenderdocApp import RENDERDOC_API_1_6_0  # type: ignore
                 self._use_renderdoc = True
             except ImportError:
                 log("Couldn't find pyRenderdocApp module! Renderdoc will not be loaded.", severity=logging.WARN)
@@ -111,7 +120,10 @@ class SSVCanvas:
                                                              self._use_renderdoc)
         if supports_line_directives is None:
             supported_extensions = self._render_process_client.get_supported_extensions()
-            supports_line_directives = "GL_ARB_shading_language_include" in supported_extensions
+            if supported_extensions is not None:
+                supports_line_directives = "GL_ARB_shading_language_include" in supported_extensions
+            else:
+                supports_line_directives = False
         self._preprocessor = SSVShaderPreprocessor(gl_version="420", supports_line_directives=supports_line_directives)
 
         self._supports_websockets = ENVIRONMENT != Env.COLAB or ENVIRONMENT != Env.JUPYTERLITE
@@ -121,7 +133,7 @@ class SSVCanvas:
         self._mouse_pos = (0, 0)
         self._mouse_down = (False, False, False)
         # Cache the last parameters to the run() method for the widget's "play" button to use
-        self._last_run_settings = {}
+        self._last_run_settings: Dict[str, Any] = {}
         self._paused = False
 
         # Set up a default render buffer
@@ -131,7 +143,9 @@ class SSVCanvas:
         self._render_buffer_counter = 1
         self._main_camera = SSVOrbitCameraController()
         self._main_camera.aspect_ratio = size[1] / size[0]
-        self._textures: dict[str, SSVTexture] = {}
+        self._current_move_dir: MoveDir = MoveDir.NONE
+        self._last_frame_time = time.perf_counter()
+        self._textures: Dict[str, SSVTexture] = {}
 
     def __del__(self):
         self.stop()
@@ -159,19 +173,29 @@ class SSVCanvas:
     def __on_render(self, stream_data: Union[bytes, str]):
         if self._streaming_mode == SSVStreamingMode.MJPEG and self._canvas_stream_server is not None:
             # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
-            self._canvas_stream_server.send(stream_data)
+            self._canvas_stream_server.send(stream_data)  # type: ignore
         elif self._supports_websockets and self._canvas_stream_server is not None:
             # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
             if isinstance(stream_data, str):
                 stream_data = stream_data.encode('utf-8')
             self._canvas_stream_server.send(stream_data)
-        else:
+        elif self._widget is not None:
             if isinstance(stream_data, str):
                 self._widget.stream_data_ascii = stream_data
             else:
                 self._widget.stream_data_binary = stream_data
             # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
             # self._widget.send({"stream_data": len(stream_data)}, buffers=[stream_data])
+        t = time.perf_counter()
+        delta_time = t - self._last_frame_time
+        self._last_frame_time = t
+        # Update camera
+        if self._current_move_dir != MoveDir.NONE:
+            self._main_camera.move(self._current_move_dir, delta_time)
+            self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                       self._main_camera.view_matrix)
+        # Invoke callbacks
+        self._on_frame_rendered(delta_time)
 
     def __on_heartbeat(self):
         self._render_process_client.send_heartbeat()
@@ -183,7 +207,7 @@ class SSVCanvas:
         # self.run(**self._last_run_settings)
         self._paused = False
         if "stream_quality" in self._last_run_settings:
-            self._render_process_client.render(self._target_framerate, str(self._streaming_mode),
+            self._render_process_client.render(self._target_framerate, self._streaming_mode.value,
                                                self._last_run_settings["stream_quality"])
 
     def __on_stop(self):
@@ -197,22 +221,25 @@ class SSVCanvas:
                             self._mouse_down[2] if button != 2 else down)
         self._render_process_client.update_uniform(None, None, "uMouseDown", down)
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
+        self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                   self._main_camera.view_matrix)
         self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
+
+    def __update_camera_pos(self, key: str, down: bool):
+        if key == "ArrowUp" or key == "w" or key == "W" or key == "z" or key == "Z":
+            self._current_move_dir = MoveDir.FORWARD if down else MoveDir.NONE
+        elif key == "ArrowDown" or key == "s" or key == "S":
+            self._current_move_dir = MoveDir.BACKWARD if down else MoveDir.NONE
+        elif key == "ArrowLeft" or key == "a" or key == "A" or key == "q" or key == "Q":
+            self._current_move_dir = MoveDir.LEFT if down else MoveDir.NONE
+        elif key == "ArrowRight" or key == "d" or key == "D":
+            self._current_move_dir = MoveDir.RIGHT if down else MoveDir.NONE
 
     def __on_key(self, key: str, down: bool):
         if self._paused:
             return
         # TODO: Shader uniform/texture for keyboard support
-        if key == "ArrowUp" or key == "w" or key == "W" or key == "z" or key == "Z":
-            self._main_camera.move(MoveDir.FORWARD)
-        elif key == "ArrowDown" or key == "s" or key == "S":
-            self._main_camera.move(MoveDir.BACKWARD)
-        elif key == "ArrowLeft" or key == "a" or key == "A" or key == "q" or key == "Q":
-            self._main_camera.move(MoveDir.LEFT)
-        elif key == "ArrowRight" or key == "d" or key == "D":
-            self._main_camera.move(MoveDir.RIGHT)
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
+        self.__update_camera_pos(key, down)
         self._on_keyboard_event(key, down)
 
     def __on_renderdoc_capture(self):
@@ -223,25 +250,30 @@ class SSVCanvas:
         if self._paused:
             return
         self._main_camera.zoom(value * 0.05)
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
+        self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                   self._main_camera.view_matrix)
         self._on_mouse_event(self._mouse_down, self._mouse_pos, value)
 
     def __on_mouse_x_updated(self, x):
         if self._paused:
             return
         self._mouse_pos = (x.new, self._mouse_pos[1])
-        self._render_process_client.update_uniform(None, None, "uMouse", tuple(self._mouse_pos))
+        self._render_process_client.update_uniform(None, None, "uMouse",
+                                                   tuple(self._mouse_pos))
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
+        self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                   self._main_camera.view_matrix)
         self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
 
     def __on_mouse_y_updated(self, y):
         if self._paused:
             return
         self._mouse_pos = (self._mouse_pos[0], y.new)
-        self._render_process_client.update_uniform(None, None, "uMouse", tuple(self._mouse_pos))
+        self._render_process_client.update_uniform(None, None, "uMouse",
+                                                   tuple(self._mouse_pos))
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
+        self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                   self._main_camera.view_matrix)
         self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
 
     @property
@@ -254,7 +286,7 @@ class SSVCanvas:
         return self._main_render_buffer
 
     @property
-    def size(self) -> tuple[int, int]:
+    def size(self) -> Tuple[int, int]:
         """Gets the size of the canvas in pixels"""
         return self._size
 
@@ -274,12 +306,12 @@ class SSVCanvas:
         return self._main_camera
 
     @property
-    def mouse_down(self) -> tuple[bool, bool, bool]:
+    def mouse_down(self) -> Tuple[bool, bool, bool]:
         """Gets the current mouse button state as a tuple of ``bool``. [left, right, middle]"""
         return self._mouse_down
 
     @property
-    def mouse_pos(self) -> tuple[int, int]:
+    def mouse_pos(self) -> Tuple[int, int]:
         """Gets the current mouse position relative to the canvas in pixels."""
         return self._mouse_pos
 
@@ -318,7 +350,7 @@ class SSVCanvas:
         """
         self._on_keyboard_event.register_callback(callback, remove)
 
-    def on_frame_rendered(self, callback: Callable[[], None], remove: bool = False):
+    def on_frame_rendered(self, callback: OnFrameRenderedDelegate, remove: bool = False):
         """
         Registers/unregisters a callback which is invoked when.
 
@@ -362,7 +394,7 @@ class SSVCanvas:
         self._render_process_client.subscribe_on_render(self.__on_render)
         self._on_start()
 
-        if not self._standalone:
+        if self._widget is not None:
             from IPython.display import display
             self._widget.streaming_mode = self._streaming_mode.name
             self._widget.use_websockets = self._supports_websockets
@@ -384,8 +416,10 @@ class SSVCanvas:
                 self._update_frame_rate_task.start()
 
         # Make sure the view and projection matrices are defined before rendering
-        self._render_process_client.update_uniform(None, None, "uViewMat", self._main_camera.view_matrix)
-        self._render_process_client.update_uniform(None, None, "uProjMat", self._main_camera.projection_matrix)
+        self._render_process_client.update_uniform(None, None, "uViewMat",
+                                                   self._main_camera.view_matrix)
+        self._render_process_client.update_uniform(None, None, "uProjMat",
+                                                   self._main_camera.projection_matrix)
 
         self._render_process_client.set_timeout(None if never_kill else self._render_timeout)
         self._render_process_client.render(self._target_framerate, self._streaming_mode.value, stream_quality)
@@ -401,12 +435,12 @@ class SSVCanvas:
         if force:
             self._render_process_client.stop()
         else:
-            self._render_process_client.render(0, str(self._streaming_mode))
+            self._render_process_client.render(0, self._streaming_mode.value)
 
     def shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
-               additional_templates: Optional[list[str]] = None,
-               shader_defines: Optional[dict[str, str]] = None,
-               compiler_extensions: Optional[list[str]] = None):
+               additional_templates: Optional[List[str]] = None,
+               shader_defines: Optional[Dict[str, str]] = None,
+               compiler_extensions: Optional[List[str]] = None):
         """
         Registers, compiles and attaches a shader to the main render buffer.
 
@@ -438,7 +472,7 @@ class SSVCanvas:
         """
         self._main_render_buffer.update_uniform(uniform_name, value, share_with_render_buffer, share_with_canvas)
 
-    def render_buffer(self, size: tuple[int, int], name: Optional[str] = None, order: int = 0, dtype: str = "f1",
+    def render_buffer(self, size: Tuple[int, int], name: Optional[str] = None, order: int = 0, dtype: str = "f1",
                       components: int = 4) -> SSVRenderBuffer:
         """
         Creates a new render buffer for this canvas. Useful for effects requiring multi pass rendering.
@@ -448,7 +482,8 @@ class SSVCanvas:
                      declaration. If set to ``None`` a name is automatically generated.
         :param order: a number to hint the renderer as to the order to render the buffers in. Smaller values are
                       rendered first; the main render buffer has an order of 999999.
-        :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
+        :param dtype: the data type for each pixel component (see:
+                      https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
         :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
         :return: a new render buffer object.
         """
@@ -457,8 +492,8 @@ class SSVCanvas:
         return SSVRenderBuffer(self, self._render_process_client, self._preprocessor, None,
                                render_buffer_name, order, size, dtype, components)
 
-    def texture(self, data: Union[npt.NDArray, Image], uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
-                override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True,
+    def texture(self, data: Union[npt.NDArray, Image.Image], uniform_name: Optional[str], force_2d: bool = False,
+                force_3d: bool = False, override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True,
                 declare_uniform: bool = True) -> SSVTexture:
         """
         Creates or updates a texture from the NumPy array provided.
@@ -530,10 +565,10 @@ class SSVCanvas:
         return f"Found shader templates: \n\n{shaders}"
 
     def dbg_preprocess_shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
-                              additional_templates: Optional[list[str]] = None,
-                              shader_defines: Optional[dict[str, str]] = None,
-                              compiler_extensions: Optional[list[str]] = None,
-                              pretty_print: bool = True) -> Union[str, dict[str, str]]:
+                              additional_templates: Optional[List[str]] = None,
+                              shader_defines: Optional[Dict[str, str]] = None,
+                              compiler_extensions: Optional[List[str]] = None,
+                              pretty_print: bool = True) -> Union[str, Dict[str, str]]:
         """
         Runs the preprocessor on a shader and returns the results. Useful for debugging shaders.
 
@@ -557,23 +592,26 @@ class SSVCanvas:
         if not pretty_print:
             return shaders
 
-        from ._version import VERSION
+        try:
+            from ._version import __version__  # type: ignore
+        except ImportError:
+            __version__ = "dev"
 
         # Primitive type is always defined but often set to None (so that it defaults to triangles); in this case it
         # isn't relevant to show, so we strip it.
         if "primitive_type" in shaders and shaders["primitive_type"] is None:
             del shaders["primitive_type"]
 
-        stages = shaders.keys()
-        shaders = shaders.values()
+        stages = list(shaders.keys())
+        shaders_vals = list(shaders.values())
         stages = [f"////////////////////////////////////////\n"
                   f"// {stage.upper():^34} //\n"
                   f"////////////////////////////////////////\n\n" for stage in stages]
-        shaders = [f"{shader}\n\n\n" for shader in shaders]
+        shaders_vals = [f"{shader}\n\n\n" for shader in shaders_vals]
         preproc_src = f"/************************************************************\n" \
-                      f" * {f'pySSV Shader Preprocessor version: {VERSION}':^56} *\n" \
+                      f" * {f'pySSV Shader Preprocessor version: {__version__}':^56} *\n" \
                       f" ************************************************************/\n\n"
-        preproc_src += "".join([str(s) for shader in zip(stages, shaders) for s in shader])
+        preproc_src += "".join([str(s) for shader in zip(stages, shaders_vals) for s in shader])
 
         return preproc_src
 

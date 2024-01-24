@@ -1,4 +1,4 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Union
@@ -6,12 +6,7 @@ from typing import TYPE_CHECKING, Optional, Union
 import numpy as np
 import numpy.typing as npt
 import logging
-try:
-    from PIL import Image
-    _PIL_SUPPORTED = True
-except ImportError:
-    Image = None
-    _PIL_SUPPORTED = False
+from PIL import Image
 
 from .ssv_logging import log
 
@@ -136,8 +131,8 @@ class SSVTexture:
 
     def __init__(self, texture_uid: Optional[int], render_process_client: SSVRenderProcessClient,
                  preprocessor: SSVShaderPreprocessor,
-                 data: Union[npt.NDArray, Image], uniform_name: Optional[str], force_2d: bool = False, force_3d: bool = False,
-                 override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True,
+                 data: Union[npt.NDArray, Image.Image], uniform_name: str, force_2d: bool = False,
+                 force_3d: bool = False, override_dtype: Optional[str] = None, treat_as_normalized_integer: bool = True,
                  declare_uniform: bool = True):
         """
         *Used Internally*
@@ -168,30 +163,34 @@ class SSVTexture:
         self._render_process_client = render_process_client
         self._preprocessor = preprocessor
         self._uniform_name = uniform_name
+        self._treat_as_normalized_integer = treat_as_normalized_integer
 
-        if _PIL_SUPPORTED:
-            if isinstance(data, Image.Image):
-                data = np.array(data)
+        if isinstance(data, Image.Image):
+            data_np = np.array(data)
+        else:
+            data_np = data
 
-        if force_2d and len(data.shape) == 2 and data.shape[1] <= 4:
-            data = data.reshape((*data.shape, 1))
-        if force_3d and len(data.shape) == 3 and data.shape[2] <= 4:
-            data = data.reshape((*data.shape, 1))
+        if force_2d and len(data_np.shape) == 2 and data_np.shape[1] <= 4:
+            data_np = data_np.reshape((*data_np.shape, 1))
+        if force_3d and len(data_np.shape) == 3 and data_np.shape[2] <= 4:
+            data_np = data_np.reshape((*data_np.shape, 1))
 
-        (self._components, self._depth, self._height, self._width, self._dtype) = \
-            determine_texture_shape(data, override_dtype, treat_as_normalized_integer)
+        (self._components, self._depth, self._height, self._width, _dtype) = \
+            determine_texture_shape(data_np, override_dtype, treat_as_normalized_integer)
+        assert _dtype is not None
+        self._dtype = _dtype
 
         sampler_prefix = ""
         if not treat_as_normalized_integer:
-            if data.dtype.kind in {"f", "c"}:
+            if data_np.dtype.kind in {"f", "c"}:
                 sampler_prefix = ""
-            elif data.dtype.kind in {"b", "u", "S", "V"}:
+            elif data_np.dtype.kind in {"b", "u", "S", "V"}:
                 sampler_prefix = "u"
             else:
                 sampler_prefix = "i"
         sampler_type = f"{sampler_prefix}sampler3D" if self._depth > 1 else f"{sampler_prefix}sampler2D"
 
-        self._render_process_client.update_texture(self._texture_uid, data, uniform_name, override_dtype, None,
+        self._render_process_client.update_texture(self._texture_uid, data_np, uniform_name, override_dtype, None,
                                                    treat_as_normalized_integer)
         if declare_uniform:
             self._preprocessor.add_dynamic_uniform(self._uniform_name, sampler_type)
@@ -319,7 +318,8 @@ class SSVTexture:
         :param rect: optionally, a rectangle (left, top, right, bottom) specifying the area of the target texture to
                      update.
         """
-        self._render_process_client.update_texture(self._texture_uid, data, None, None, rect)
+        self._render_process_client.update_texture(self._texture_uid, data, None, None, rect,
+                                                   self._treat_as_normalized_integer)
 
     def build_mipmaps(self):
         """

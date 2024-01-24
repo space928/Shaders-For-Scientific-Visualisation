@@ -1,13 +1,13 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-from typing import Optional
+from typing import Optional, Tuple
 
 from .ssv_render_widget import SSVRenderWidget
 from .ssv_canvas import SSVCanvas
 from .ssv_logging import log
 
 try:
-    from ._version import __version__
+    from ._version import __version__  # type: ignore
 except ImportError:
     # Fallback when using the package in dev mode without installing in editable mode with pip. It is highly
     # recommended to install the package from a stable release or in editable mode:
@@ -35,7 +35,7 @@ def _jupyter_nbextension_paths():
 
 # Various factory methods
 
-def canvas(size: Optional[tuple[int, int]] = (640, 480), backend: str = "opengl", standalone: bool = False,
+def canvas(size: Optional[Tuple[int, int]] = (640, 480), backend: str = "opengl", standalone: bool = False,
            target_framerate: int = 60, use_renderdoc: bool = False, supports_line_directives: Optional[bool] = None):
     """
     Creates a new ``SSVCanvas`` which contains the render widget and manages the render context.

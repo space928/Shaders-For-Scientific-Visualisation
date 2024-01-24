@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+#  Copyright (c) 2024 Thomas Mathieson.
+#  Distributed under the terms of the MIT license.
+
+# mypy: ignore-errors
+
 # Copyright (c) Jupyter Development Team.
 # Distributed under the terms of the Modified BSD License.
 

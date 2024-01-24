@@ -1,6 +1,6 @@
 #  Copyright (c) 2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, Set
 
 
 T = TypeVar("T", bound=Callable[..., None])
@@ -10,7 +10,7 @@ class SSVCallbackDispatcher(Generic[T]):
     """
     A simple event callback dispatcher class similar to the ``ipywidgets.widgets.widget.CallbackDispatcher``.
     """
-    _callbacks: set[T]
+    _callbacks: Set[T]
 
     def __init__(self):
         self._callbacks = set()

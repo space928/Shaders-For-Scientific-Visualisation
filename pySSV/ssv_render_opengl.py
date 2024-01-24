@@ -1,8 +1,8 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
 import time
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Tuple, Set, Dict, List, cast
 from dataclasses import dataclass
 
 import moderngl
@@ -16,24 +16,28 @@ from .ssv_texture import determine_texture_shape
 
 # Optional support for pyRenderdocApp
 try:
-    from pyRenderdocApp import load_render_doc, RENDERDOC_API_1_6_0
+    from pyRenderdocApp import load_render_doc, RENDERDOC_API_1_6_0  # type: ignore
 except ImportError:
-    RENDERDOC_API_1_6_0 = None
-    load_render_doc = lambda: None
+    class RENDERDOC_API_1_6_0:  # type: ignore[no-redef]
+        ...
 
-PRIMITIVE_TYPES = {
-    "POINTS": moderngl.POINTS,
-    "LINES": moderngl.LINES,
-    "LINE_LOOP": moderngl.LINE_LOOP,
-    "LINE_STRIP": moderngl.LINE_STRIP,
-    "TRIANGLES": moderngl.TRIANGLES,
-    "TRIANGLE_STRIP": moderngl.TRIANGLE_STRIP,
-    "TRIANGLE_FAN": moderngl.TRIANGLE_FAN,
-    "LINES_ADJACENCY": moderngl.LINES_ADJACENCY,
-    "LINE_STRIP_ADJACENCY": moderngl.LINE_STRIP_ADJACENCY,
-    "TRIANGLES_ADJACENCY": moderngl.TRIANGLES_ADJACENCY,
-    "TRIANGLE_STRIP_ADJACENCY": moderngl.TRIANGLE_STRIP_ADJACENCY,
-    "PATCHES": moderngl.PATCHES
+
+    def load_render_doc(renderdoc_path: Optional[str] = None) -> RENDERDOC_API_1_6_0:  # type: ignore[no-redef]
+        return RENDERDOC_API_1_6_0()
+
+PRIMITIVE_TYPES: Dict[str, int] = {
+    "POINTS": cast(int, moderngl.POINTS),
+    "LINES": cast(int, moderngl.LINES),
+    "LINE_LOOP": cast(int, moderngl.LINE_LOOP),
+    "LINE_STRIP": cast(int, moderngl.LINE_STRIP),
+    "TRIANGLES": cast(int, moderngl.TRIANGLES),
+    "TRIANGLE_STRIP": cast(int, moderngl.TRIANGLE_STRIP),
+    "TRIANGLE_FAN": cast(int, moderngl.TRIANGLE_FAN),
+    "LINES_ADJACENCY": cast(int, moderngl.LINES_ADJACENCY),
+    "LINE_STRIP_ADJACENCY": cast(int, moderngl.LINE_STRIP_ADJACENCY),
+    "TRIANGLES_ADJACENCY": cast(int, moderngl.TRIANGLES_ADJACENCY),
+    "TRIANGLE_STRIP_ADJACENCY": cast(int, moderngl.TRIANGLE_STRIP_ADJACENCY),
+    "PATCHES": cast(int, moderngl.PATCHES)
 }
 
 
@@ -46,7 +50,7 @@ class SSVDrawCall:
     order: int
     vertex_buffer: Optional[moderngl.Buffer]
     index_buffer: Optional[moderngl.Buffer]
-    vertex_attributes: tuple[str, ...]
+    vertex_attributes: Tuple[str, ...]
     gl_vertex_array: Optional[moderngl.VertexArray]
     shader_program: Optional[moderngl.Program]
     primitive_type: int
@@ -62,10 +66,14 @@ class SSVDrawCall:
 
     def release(self, needs_gc: bool):
         if needs_gc:
-            self.gl_vertex_array.release()
-            self.vertex_buffer.release()
-            self.index_buffer.release()
-            self.shader_program.release()
+            if self.gl_vertex_array is not None:
+                self.gl_vertex_array.release()
+            if self.vertex_buffer is not None:
+                self.vertex_buffer.release()
+            if self.index_buffer is not None:
+                self.index_buffer.release()
+            if self.shader_program is not None:
+                self.shader_program.release()
 
 
 @dataclass
@@ -77,7 +85,7 @@ class SSVRenderBufferOpenGL:
     needs_gc: bool
     frame_buffer: moderngl.Framebuffer
     render_texture: moderngl.Texture
-    draw_calls: dict[int, SSVDrawCall]
+    draw_calls: Dict[int, SSVDrawCall]
     uniform_name: str
 
     def release(self):
@@ -123,9 +131,9 @@ class SSVRenderOpenGL(SSVRender):
     )
 
     def __init__(self, use_renderdoc_api: bool = False):
-        self._render_buffers: dict[int, SSVRenderBufferOpenGL] = {}
-        self._ordered_render_buffers: list[SSVRenderBufferOpenGL] = []
-        self._texture_objects: dict[int, SSVTextureOpenGL] = {}
+        self._render_buffers: Dict[int, SSVRenderBufferOpenGL] = {}
+        self._ordered_render_buffers: List[SSVRenderBufferOpenGL] = []
+        self._texture_objects: Dict[int, SSVTextureOpenGL] = {}
         self._renderdoc_api = None
         self._renderdoc_is_capturing = False
         if use_renderdoc_api:
@@ -146,6 +154,7 @@ class SSVRenderOpenGL(SSVRender):
         if ENVIRONMENT == Env.COLAB:
             # TODO: Test if any other platforms require specific backends
             # In Google Colab we need to explicitly specify the EGL backend, otherwise it tries (and fails) to use X11
+            # noinspection PyTypeChecker
             self.ctx = moderngl.create_context(standalone=True, backend="egl")
         else:
             # Otherwise let ModernGL try to automatically determine the correct backend
@@ -160,7 +169,8 @@ class SSVRenderOpenGL(SSVRender):
         self.ctx.depth_func = "<="
         self.ctx.enable(moderngl.BLEND)
         # A bit of a weird blending function, but it plays 'nice' with the GUI...
-        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA, moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
+        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,
+                               moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
         self.ctx.blend_equation = moderngl.FUNC_ADD  # , moderngl.MAX
 
     def log_context_info(self, full=False):
@@ -180,13 +190,13 @@ class SSVRenderOpenGL(SSVRender):
             extensions = pformat(self.ctx.extensions, indent=4)
             log(f"GL Extensions: \n{extensions}", severity=logging.INFO)
 
-    def get_context_info(self) -> dict[str, str]:
+    def get_context_info(self) -> Dict[str, str]:
         return self.ctx.info
 
-    def get_supported_extensions(self) -> set[str]:
+    def get_supported_extensions(self) -> Set[str]:
         return self.ctx.extensions
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
                             components: int = 4, dtype: str = "f1"):
         # TODO: It might make sense to decouple the moderngl dtype from our dtype if this is meant to be used by an
         #  abstract class.
@@ -231,7 +241,7 @@ class SSVRenderOpenGL(SSVRender):
                        uniform_name: str, value: Any):
         def update_internal(program: moderngl.Program):
             if program is not None and uniform_name in program:
-                program[uniform_name].value = value
+                program[uniform_name].value = value  # type: ignore
 
         if frame_buffer_uid is not None and frame_buffer_uid not in self._render_buffers:
             log(f"Couldn't set uniform in render buffer {frame_buffer_uid} as it doesn't exist!",
@@ -240,8 +250,8 @@ class SSVRenderOpenGL(SSVRender):
         if (draw_call_uid is not None and
                 (frame_buffer_uid is None or
                  draw_call_uid not in self._render_buffers[frame_buffer_uid].draw_calls)):
-            log(f"Couldn't set uniform in draw call {draw_call_uid} for render buffer {frame_buffer_uid} as it doesn't exist!",
-                severity=logging.ERROR)
+            log(f"Couldn't set uniform in draw call {draw_call_uid} for render buffer {frame_buffer_uid} as it "
+                f"doesn't exist!", severity=logging.ERROR)
             return
 
         # Based on whether a frame buffer and/or vertex buffer are specified we either update the uniform
@@ -249,16 +259,18 @@ class SSVRenderOpenGL(SSVRender):
         # TODO: For high-performance scenarios we could probably improve performance by using uniform blocks
         if frame_buffer_uid is not None:
             if draw_call_uid is not None:
-                update_internal(self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid].shader_program)
+                shader = self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid].shader_program
+                update_internal(shader)  # type: ignore
             else:
-                [update_internal(vb.shader_program) for vb in
+                [update_internal(vb.shader_program) for vb in  # type: ignore
                  self._render_buffers[frame_buffer_uid].draw_calls.values()]
         else:
-            [update_internal(vb.shader_program) for rb in self._ordered_render_buffers for vb in rb.draw_calls.values()]
+            [update_internal(vb.shader_program)  # type: ignore
+             for rb in self._ordered_render_buffers for vb in rb.draw_calls.values()]
 
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
                              vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
-                             vertex_attributes: Optional[tuple[str]]):
+                             vertex_attributes: Optional[Tuple[str]]):
         if frame_buffer_uid not in self._render_buffers:
             log(f"Attempted to update the vertex buffer for a non-existant render buffer (id={frame_buffer_uid})!",
                 severity=logging.ERROR)
@@ -270,7 +282,8 @@ class SSVRenderOpenGL(SSVRender):
             draw_call.order = 0
             draw_call.shader_program = None
             self._render_buffers[frame_buffer_uid].draw_calls[draw_call_uid] = draw_call
-            draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
+            draw_call.vertex_buffer = (self._default_vertex_buffer if vertex_array is None else
+                                       self.ctx.buffer(vertex_array))
             draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
         else:
             # Update an existing draw call
@@ -278,24 +291,26 @@ class SSVRenderOpenGL(SSVRender):
             if (vertex_array is not None
                     and draw_call.vertex_buffer is not None
                     and not isinstance(draw_call.vertex_buffer.mglo, moderngl.InvalidObject)
-                    and draw_call.vertex_buffer.size == len(vertex_array)*vertex_array.dtype.itemsize):
+                    and draw_call.vertex_buffer.size == len(vertex_array) * vertex_array.dtype.itemsize):
                 draw_call.vertex_buffer.write(vertex_array)
             else:
                 if draw_call.vertex_buffer is not None:
                     draw_call.vertex_buffer.release()
-                draw_call.vertex_buffer = self._default_vertex_buffer if vertex_array is None else self.ctx.buffer(vertex_array)
+                draw_call.vertex_buffer = (self._default_vertex_buffer if vertex_array is None else
+                                           self.ctx.buffer(vertex_array))
 
             if (index_array is not None
                     and draw_call.index_buffer is not None
                     and not isinstance(draw_call.index_buffer.mglo, moderngl.InvalidObject)
-                    and draw_call.index_buffer.size == len(index_array)*index_array.dtype.itemsize):
+                    and draw_call.index_buffer.size == len(index_array) * index_array.dtype.itemsize):
                 draw_call.index_buffer.write(index_array)
             else:
                 if draw_call.index_buffer is not None:
                     draw_call.index_buffer.release()
                 draw_call.index_buffer = None if index_array is None else self.ctx.buffer(index_array)
 
-        draw_call.vertex_attributes = self._default_vertex_buffer_vertex_attributes if vertex_attributes is None else vertex_attributes
+        draw_call.vertex_attributes = (self._default_vertex_buffer_vertex_attributes if vertex_attributes is None else
+                                       vertex_attributes)
         try:
             if draw_call.shader_program is not None:
                 if draw_call.gl_vertex_array is not None:
@@ -342,7 +357,8 @@ class SSVRenderOpenGL(SSVRender):
                                  tess_control_shader=tess_control_shader,
                                  tess_evaluation_shader=tess_evaluation_shader))
 
-            draw_call.primitive_type = moderngl.TRIANGLES if primitive_type is None else PRIMITIVE_TYPES[primitive_type]
+            draw_call.primitive_type = cast(int, moderngl.TRIANGLES if primitive_type is None
+            else PRIMITIVE_TYPES[primitive_type])
 
             # Creating a new shader program invalidates any previously bound vertex arrays, so we need to recreate it.
             # Annoyingly, to support the "default" case where the user doesn't call update_vertex_buffer() we need to
@@ -366,7 +382,7 @@ class SSVRenderOpenGL(SSVRender):
 
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       rect: Optional[Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]],
                        treat_as_normalized_integer: bool):
         if texture_uid not in self._texture_objects:
             # Try to determine the shape of the texture to create
@@ -424,36 +440,41 @@ class SSVRenderOpenGL(SSVRender):
 
         if linear_filtering is not None:
             old_filter = texture.filter
-            if old_filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+            if old_filter[0] >= cast(int, moderngl.NEAREST_MIPMAP_NEAREST):
                 # Texture has mipmaps
-                mipmap = old_filter[0] == moderngl.LINEAR_MIPMAP_LINEAR or old_filter[0] == moderngl.NEAREST_MIPMAP_LINEAR
+                mipmap = (old_filter[0] == moderngl.LINEAR_MIPMAP_LINEAR
+                          or old_filter[0] == moderngl.NEAREST_MIPMAP_LINEAR)
                 if linear_filtering:
-                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if mipmap else moderngl.LINEAR_MIPMAP_NEAREST,
-                                      moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if mipmap
+                                      else moderngl.LINEAR_MIPMAP_NEAREST),
+                                      cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if mipmap else moderngl.NEAREST_MIPMAP_NEAREST,
-                                      moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if mipmap
+                                      else moderngl.NEAREST_MIPMAP_NEAREST),
+                                      cast(int, moderngl.NEAREST))
             else:
                 # Texture doesn't use mipmaps
                 if linear_filtering:
-                    texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR), cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST), cast(int, moderngl.NEAREST))
 
         if linear_mipmap_filtering is not None:
-            if texture.filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+            if texture.filter[0] >= cast(int, moderngl.NEAREST_MIPMAP_NEAREST):
                 # Texture has mipmaps
-                linear = texture.filter[1] == moderngl.LINEAR
+                linear = texture.filter[1] == cast(int, moderngl.LINEAR)
                 if linear:
-                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else moderngl.LINEAR_MIPMAP_NEAREST,
-                                      moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else
+                                      moderngl.LINEAR_MIPMAP_NEAREST),
+                                      cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else moderngl.NEAREST_MIPMAP_NEAREST,
-                                      moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else
+                                      moderngl.NEAREST_MIPMAP_NEAREST),
+                                      cast(int, moderngl.NEAREST))
 
         if anisotropy is not None:
             if 1 < anisotropy < 16:
-                texture.anisotropy = float(anisotropy)
+                texture.anisotropy = float(anisotropy)  # type: ignore
             else:
                 log(f"Texture anisotropy must be between 1 and 16. (got: {anisotropy})", logging.WARN)
 
@@ -466,15 +487,15 @@ class SSVRenderOpenGL(SSVRender):
         # Bind all the render buffers
         for fb in self._render_buffers.values():
             if fb.uniform_name in program:
-                program[fb.uniform_name].value = image_unit
-                fb.frame_buffer.color_attachments[0].use(image_unit)
+                program[fb.uniform_name].value = image_unit  # type: ignore
+                fb.render_texture.use(image_unit)  # type: ignore
                 image_unit += 1
         # Bind all the user textures
         # log(f"Textures: [{', '.join([x.uniform_name for x in self._texture_objects.values()])}]; "
         #     f"Program uniforms: [{', '.join([x for x in program._members.keys()])}]", severity=logging.INFO)
         for texture in self._texture_objects.values():
             if texture.uniform_name in program:
-                program[texture.uniform_name].value = image_unit
+                program[texture.uniform_name].value = image_unit  # type: ignore
                 texture.texture.use(image_unit)
                 image_unit += 1
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Thomas Mathieson.
+ * Copyright (c) 2023-2024 Thomas Mathieson.
  * Distributed under the terms of the MIT license.
  */
 
@@ -251,10 +251,19 @@ export class SSVRenderView extends DOMWidgetView {
       }
     );
     this._stream_element.addEventListener(
+      "contextmenu",
+      (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    );
+    this._stream_element.addEventListener(
       "mousedown",
       (event: Event) => {
         const evt = event as MouseEvent;
         this.send({"mousedown": evt.button});
+        evt.preventDefault();
+        evt.stopPropagation();
       }
     );
     this._stream_element.addEventListener(
@@ -262,6 +271,8 @@ export class SSVRenderView extends DOMWidgetView {
       (event: Event) => {
         const evt = event as MouseEvent;
         this.send({"mouseup": evt.button});
+        evt.preventDefault();
+        evt.stopPropagation();
       }
     );
     this._stream_element.addEventListener(
@@ -276,10 +287,10 @@ export class SSVRenderView extends DOMWidgetView {
         this._focussed = false;
       }
     );
-    window.addEventListener("keypress", this.on_keypress);
-    window.addEventListener("keydown", this.on_keydown);
-    window.addEventListener("keyup", this.on_keyup);
-    window.addEventListener("wheel", this.on_wheel, {passive: false});
+    document.addEventListener("keypress", this.on_keypress, {capture: true});
+    document.addEventListener("keydown", this.on_keydown, {capture: true});
+    document.addEventListener("keyup", this.on_keyup, {capture: true});
+    document.addEventListener("wheel", this.on_wheel, {passive: false});
   }
 
   private on_keypress = (event: KeyboardEvent) => {
