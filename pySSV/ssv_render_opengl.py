@@ -2,7 +2,7 @@
 #  Distributed under the terms of the MIT license.
 import logging
 import time
-from typing import Optional, Any, Union, Tuple, Set, Dict, List
+from typing import Optional, Any, Union, Tuple, Set, Dict, List, cast
 from dataclasses import dataclass
 
 import moderngl
@@ -25,19 +25,19 @@ except ImportError:
     def load_render_doc(renderdoc_path: Optional[str] = None) -> RENDERDOC_API_1_6_0:  # type: ignore[no-redef]
         return RENDERDOC_API_1_6_0()
 
-PRIMITIVE_TYPES = {
-    "POINTS": moderngl.POINTS,
-    "LINES": moderngl.LINES,
-    "LINE_LOOP": moderngl.LINE_LOOP,
-    "LINE_STRIP": moderngl.LINE_STRIP,
-    "TRIANGLES": moderngl.TRIANGLES,
-    "TRIANGLE_STRIP": moderngl.TRIANGLE_STRIP,
-    "TRIANGLE_FAN": moderngl.TRIANGLE_FAN,
-    "LINES_ADJACENCY": moderngl.LINES_ADJACENCY,
-    "LINE_STRIP_ADJACENCY": moderngl.LINE_STRIP_ADJACENCY,
-    "TRIANGLES_ADJACENCY": moderngl.TRIANGLES_ADJACENCY,
-    "TRIANGLE_STRIP_ADJACENCY": moderngl.TRIANGLE_STRIP_ADJACENCY,
-    "PATCHES": moderngl.PATCHES
+PRIMITIVE_TYPES: Dict[str, int] = {
+    "POINTS": cast(int, moderngl.POINTS),
+    "LINES": cast(int, moderngl.LINES),
+    "LINE_LOOP": cast(int, moderngl.LINE_LOOP),
+    "LINE_STRIP": cast(int, moderngl.LINE_STRIP),
+    "TRIANGLES": cast(int, moderngl.TRIANGLES),
+    "TRIANGLE_STRIP": cast(int, moderngl.TRIANGLE_STRIP),
+    "TRIANGLE_FAN": cast(int, moderngl.TRIANGLE_FAN),
+    "LINES_ADJACENCY": cast(int, moderngl.LINES_ADJACENCY),
+    "LINE_STRIP_ADJACENCY": cast(int, moderngl.LINE_STRIP_ADJACENCY),
+    "TRIANGLES_ADJACENCY": cast(int, moderngl.TRIANGLES_ADJACENCY),
+    "TRIANGLE_STRIP_ADJACENCY": cast(int, moderngl.TRIANGLE_STRIP_ADJACENCY),
+    "PATCHES": cast(int, moderngl.PATCHES)
 }
 
 
@@ -357,7 +357,8 @@ class SSVRenderOpenGL(SSVRender):
                                  tess_control_shader=tess_control_shader,
                                  tess_evaluation_shader=tess_evaluation_shader))
 
-            draw_call.primitive_type = moderngl.TRIANGLES if primitive_type is None else PRIMITIVE_TYPES[primitive_type]
+            draw_call.primitive_type = cast(int, moderngl.TRIANGLES if primitive_type is None
+            else PRIMITIVE_TYPES[primitive_type])
 
             # Creating a new shader program invalidates any previously bound vertex arrays, so we need to recreate it.
             # Annoyingly, to support the "default" case where the user doesn't call update_vertex_buffer() we need to
@@ -439,33 +440,37 @@ class SSVRenderOpenGL(SSVRender):
 
         if linear_filtering is not None:
             old_filter = texture.filter
-            if old_filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+            if old_filter[0] >= cast(int, moderngl.NEAREST_MIPMAP_NEAREST):
                 # Texture has mipmaps
                 mipmap = (old_filter[0] == moderngl.LINEAR_MIPMAP_LINEAR
                           or old_filter[0] == moderngl.NEAREST_MIPMAP_LINEAR)
                 if linear_filtering:
-                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if mipmap else moderngl.LINEAR_MIPMAP_NEAREST,
-                                      moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if mipmap
+                                      else moderngl.LINEAR_MIPMAP_NEAREST),
+                                      cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if mipmap else moderngl.NEAREST_MIPMAP_NEAREST,
-                                      moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if mipmap
+                                      else moderngl.NEAREST_MIPMAP_NEAREST),
+                                      cast(int, moderngl.NEAREST))
             else:
                 # Texture doesn't use mipmaps
                 if linear_filtering:
-                    texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR), cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST), cast(int, moderngl.NEAREST))
 
         if linear_mipmap_filtering is not None:
-            if texture.filter[0] >= moderngl.NEAREST_MIPMAP_NEAREST:
+            if texture.filter[0] >= cast(int, moderngl.NEAREST_MIPMAP_NEAREST):
                 # Texture has mipmaps
-                linear = texture.filter[1] == moderngl.LINEAR
+                linear = texture.filter[1] == cast(int, moderngl.LINEAR)
                 if linear:
-                    texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else
-                                      moderngl.LINEAR_MIPMAP_NEAREST, moderngl.LINEAR)
+                    texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else
+                                      moderngl.LINEAR_MIPMAP_NEAREST),
+                                      cast(int, moderngl.LINEAR))
                 else:
-                    texture.filter = (moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else
-                                      moderngl.NEAREST_MIPMAP_NEAREST, moderngl.NEAREST)
+                    texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else
+                                      moderngl.NEAREST_MIPMAP_NEAREST),
+                                      cast(int, moderngl.NEAREST))
 
         if anisotropy is not None:
             if 1 < anisotropy < 16:

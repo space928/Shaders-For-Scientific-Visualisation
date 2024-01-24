@@ -13,6 +13,7 @@ from typing import Optional, Dict, Set
 
 import av  # type: ignore
 import numpy as np
+import numpy.typing as npt
 from PIL import Image
 
 from . import ssv_logging
@@ -491,7 +492,7 @@ class SSVRenderProcessServer:
 
         # img = Image.frombytes("RGB", self.output_size, frame)
         # av_frame = av.VideoFrame.from_image(img)
-        frame_np = np.array(frame, copy=False, dtype=np.uint8)
+        frame_np: npt.NDArray[np.uint8] = np.array(frame, copy=False, dtype=np.uint8)
         frame_np = frame_np.reshape((self.output_size[1], self.output_size[0], 3))
         av_frame = av.VideoFrame.from_ndarray(frame_np, format="rgb24")
         packets = self._video_stream.encode(av_frame)

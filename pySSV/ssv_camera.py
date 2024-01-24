@@ -283,7 +283,7 @@ class SSVOrbitCameraController(SSVCameraController):
         :param direction: the direction to move in.
         :param distance: the distance to move.
         """
-        dir_vec = np.zeros(4, dtype=np.float32)
+        dir_vec: npt.NDArray[np.float32] = np.zeros(4, dtype=np.float32)
         if direction == MoveDir.UP:
             dir_vec[1] = self.move_speed * distance
         elif direction == MoveDir.DOWN:

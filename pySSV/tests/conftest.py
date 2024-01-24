@@ -15,7 +15,7 @@ class MockComm(Comm):
 
     Can be used to inspect calls to Comm's open/send/close methods.
     """
-    comm_id = 'a-b-c-d'
+    comm_id = 'a-b-c-d'  # type: ignore
     kernel = 'Truthy'  # type: ignore
 
     def __init__(self, *args, **kwargs):
