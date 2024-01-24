@@ -1,13 +1,13 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-from typing import Any
+from typing import Any, List
 
-import pcpp
+import pcpp  # type: ignore
 
 
 class SSVShaderArgsTokenizer:
     @staticmethod
-    def correct_tokens(tokens: list[Any], preprocessor: pcpp.Preprocessor):
+    def correct_tokens(tokens: List[Any], preprocessor: pcpp.Preprocessor):
         """
         This method takes a list of PCPP LexTokens and converts them to a list of arguments for argparse.
 

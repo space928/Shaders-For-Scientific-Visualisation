@@ -1,12 +1,16 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import io
 import logging
 import os.path
-from typing import Optional, List
+from typing import Any, Optional, Union, List, Dict, Tuple
 
 import argparse
-from importlib.resources import files
+import sys
+if sys.version_info >= (3, 9):
+    from importlib.resources import files
+else:
+    from importlib.resources import contents, read_text
 
 from .ssv_logging import log
 from .ssv_pragma_parser import SSVShaderPragmaParser, SSVTemplatePragmaParser, SSVTemplatePragmaData
@@ -22,12 +26,12 @@ class SSVShaderPreprocessor:
     def __init__(self, gl_version: str, supports_line_directives: bool):
         self._gl_version = gl_version
         self._supports_line_directives = supports_line_directives
-        self._dynamic_uniforms = {}
+        self._dynamic_uniforms: Dict[str, str] = {}
         self._template_parser = SSVTemplatePragmaParser()
         self._shader_parser = SSVShaderPragmaParser()
 
     @staticmethod
-    def _make_argparse(template_metadata: dict[str, list[SSVTemplatePragmaData]]) -> argparse.ArgumentParser:
+    def _make_argparse(template_metadata: Dict[str, List[SSVTemplatePragmaData]]) -> argparse.ArgumentParser:
         template_name = "SSV"
         template_author = ""
         template_description = ""
@@ -54,7 +58,7 @@ class SSVShaderPreprocessor:
             # Convert the argument name to a positional/non-positional name
             prefixed = arg.name[0] == "_"
             non_positional = arg.non_positional or prefixed
-            arg_name = (arg.name,)
+            arg_name: Union[Tuple[str], Tuple[str, str]] = (arg.name,)
             if non_positional:
                 name = f"--{arg.name[1 if prefixed else 0:]}"
                 short_name = name[1:3]
@@ -64,7 +68,7 @@ class SSVShaderPreprocessor:
                     arg_name = (name, short_name)
                     short_args.add(short_name)
 
-            params = {"action": arg.action}
+            params: Dict[str, Any] = {"action": arg.action}
             if arg.const is not None:
                 params["const"] = arg.const
             if arg.choices is not None and len(arg.choices) > 0:
@@ -81,7 +85,8 @@ class SSVShaderPreprocessor:
         return parser
 
     def _make_defines(self, template_args: argparse.Namespace, template_argparse: argparse.ArgumentParser,
-                      extra_defines: Optional[dict[str, str]], compiler_extensions: Optional[list[str]]) -> list[tuple[str, str]]:
+                      extra_defines: Optional[Dict[str, str]],
+                      compiler_extensions: Optional[List[str]]) -> List[Tuple[str, str]]:
         """
         Converts templates arguments from an argparse namespace to a list of tuples::
 
@@ -183,8 +188,11 @@ class SSVShaderPreprocessor:
         # Finally, check the built-in shaders
         if template_source is None:
             try:
-                template_traversable = files("pySSV.shaders").joinpath(template_expected_filename)
-                template_source = template_traversable.read_text()
+                if sys.version_info >= (3, 9):
+                    template_traversable = files("pySSV.shaders").joinpath(template_expected_filename)
+                    template_source = template_traversable.read_text()
+                else:
+                    template_source = read_text("pySSV.shaders", template_expected_filename)
                 template_path = template_expected_filename
             except Exception as e:
                 raise FileNotFoundError(f"Couldn't find/read a shader template called '{template_name}', "
@@ -195,9 +203,9 @@ class SSVShaderPreprocessor:
 
     def preprocess(self, source: str, filepath: Optional[str] = None,
                    additional_template_directory: Optional[str] = None,
-                   additional_templates: Optional[list[str]] = None,
-                   shader_defines: Optional[dict[str, str]] = None,
-                   compiler_extensions: Optional[list[str]] = None):
+                   additional_templates: Optional[List[str]] = None,
+                   shader_defines: Optional[Dict[str, str]] = None,
+                   compiler_extensions: Optional[List[str]] = None) -> Dict[str, str]:
         """
         Preprocesses an SSV shader into multiple processed shaders for each pipeline.
 
@@ -231,9 +239,10 @@ class SSVShaderPreprocessor:
         parsed_args = template_argparse.parse_args(template_info.args)
         defines = self._make_defines(parsed_args, template_argparse, shader_defines, compiler_extensions)
 
-        stages = []
+        stages: List[str] = []
         for template_data in template_metadata.get("stage", []):
-            stages.extend(template_data.shader_stage)
+            if template_data.shader_stage is not None:
+                stages.extend(template_data.shader_stage)
 
         # Preprocess the template
         compiled_shaders = {}
@@ -254,11 +263,12 @@ class SSVShaderPreprocessor:
         primitive_type = None
         for p in template_metadata.get("input_primitive", []):
             primitive_type = p.primitive_type
-        compiled_shaders["primitive_type"] = primitive_type
+        if primitive_type is not None:
+            compiled_shaders["primitive_type"] = primitive_type
         return compiled_shaders
 
     def dbg_query_shader_templates(self,
-                                   additional_template_directory: Optional[str] = None) -> list[SSVTemplatePragmaData]:
+                                   additional_template_directory: Optional[str] = None) -> List[SSVTemplatePragmaData]:
         """
         Gets a list of all the shader templates available to the preprocessor.
 
@@ -285,19 +295,26 @@ class SSVShaderPreprocessor:
 
         # Then, check the built-in shaders
         try:
-            template_traversables = [f for f in files("pySSV.shaders").iterdir()
-                                     if os.path.basename(f.name).startswith("template_")]
-            for t in template_traversables:
-                templates.append(t.read_text())
+            if sys.version_info >= (3, 9):
+                template_traversables = [f for f in files("pySSV.shaders").iterdir()
+                                         if os.path.basename(f.name).startswith("template_")]
+                for t in template_traversables:
+                    templates.append(t.read_text())
+            else:
+                resources = [f for f in contents("pySSV.shaders") if os.path.basename(f).startswith("template_")]
+                templates.extend([read_text("pySSV.shaders", res) for res in resources])
         except Exception as e:
             raise IOError(f"Couldn't read a built in shader template. \n"
                           f"Inner exception: {e}")
 
         # Now parse the template metadata
-        return [self._template_parser.parse(template).get("define", [None])[0] for template in templates]
+        metadata: List[Optional[SSVTemplatePragmaData]] = [
+            self._template_parser.parse(template).get("define", [None])[0] for template in templates
+        ]
+        return [m for m in metadata if m is not None]
 
     def dbg_query_shader_template(self, template_name: str, additional_template_directory: Optional[str] = None,
-                                  additional_templates: Optional[list[str]] = None) -> str:
+                                  additional_templates: Optional[List[str]] = None) -> str:
         """
         Gets the list of arguments a given shader template expects and returns a string containing their usage info.
 

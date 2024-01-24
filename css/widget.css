@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Thomas Mathieson.
+ * Copyright (c) 2023-2024 Thomas Mathieson.
  * Distributed under the terms of the MIT license.
  */
 
@@ -17,6 +17,7 @@
   --ssv-warn-color1: var(--jp-warn-color1);
 }
 
+/*noinspection CssUnresolvedCustomProperty*/
 .ssv-colab-support.ssv-colors {
   /* We need to change some of the colours here since google colab doesn't seem to support all the jupyter colours. */
   --ssv-bg-color1: var(--colab-primary-surface-color);

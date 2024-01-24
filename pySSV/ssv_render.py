@@ -1,8 +1,8 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Tuple, Set, Dict
 
 import numpy.typing as npt
 
@@ -68,21 +68,21 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def get_context_info(self) -> dict[str, str]:
+    def get_context_info(self) -> Dict[str, str]:
         """
         Returns the OpenGL context information.
         """
         ...
 
     @abstractmethod
-    def get_supported_extensions(self) -> set[str]:
+    def get_supported_extensions(self) -> Set[str]:
         """
         Gets the set of supported OpenGL shader compiler extensions.
         """
         ...
 
     @abstractmethod
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
                             components: int = 4, dtype: str = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
@@ -93,7 +93,8 @@ class SSVRender(ABC):
         :param size: the new resolution of the framebuffer.
         :param uniform_name: the name of the uniform to bind this frame buffer to.
         :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
-        :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
+        :param dtype: the data type for each pixel component (see:
+                      https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
         """
         ...
 
@@ -124,7 +125,7 @@ class SSVRender(ABC):
     @abstractmethod
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
                              vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
-                             vertex_attributes: Optional[tuple[str]]):
+                             vertex_attributes: Optional[Tuple[str]]):
         """
         Updates the data inside a vertex buffer.
 
@@ -162,7 +163,7 @@ class SSVRender(ABC):
     @abstractmethod
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       rect: Optional[Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]],
                        treat_as_normalized_integer: bool):
         """
         Creates or updates a texture from the NumPy array provided.

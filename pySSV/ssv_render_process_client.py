@@ -1,10 +1,15 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, set_start_method
 from queue import Empty
 from threading import Thread, Lock
-from typing import Callable, NewType, Optional, Any, Union
+from typing import Callable, Optional, Any, Union, Set, Tuple, Dict, List
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -15,8 +20,8 @@ from .ssv_logging import log
 from .ssv_render_process_server import SSVRenderProcessServer
 
 
-OnRenderObserverDelegate = NewType("OnRenderObserverDelegate", Callable[[bytes], None])
-OnLogObserverDelegate = NewType("OnLogObserverDelegate", Callable[[str], None])
+OnRenderObserverDelegate: TypeAlias = Callable[[bytes], None]
+OnLogObserverDelegate: TypeAlias = Callable[[str], None]
 
 
 class SSVRenderProcessClient:
@@ -33,16 +38,22 @@ class SSVRenderProcessClient:
         :param timeout: the render process watchdog timeout, set to None to disable.
         :param use_renderdoc_api: whether the renderdoc_api should be initialised.
         """
-        self._command_queue_tx = Queue()
-        self._command_queue_rx = Queue()
-        self._query_futures: dict[int, Future] = dict()
+        self._command_queue_tx: Queue[Tuple[Any, ...]] = Queue()
+        self._command_queue_rx: Queue[Tuple[Any, ...]] = Queue()
+        self._query_futures: Dict[int, Future] = dict()
         self._query_future_id_counter = 0
         self._query_futures_lock = Lock()
         self._rx_thread = Thread(target=self.__rx_thread_process, daemon=True,
                                  name=f"SSV Render Process Client RX Thread - {id(self):#08x}")
         self._rx_thread.start()
-        self._on_render_observers: list[OnRenderObserverDelegate] = []
-        self._on_log_observers: list[OnLogObserverDelegate] = []
+        self._on_render_observers: List[OnRenderObserverDelegate] = []
+        self._on_log_observers: List[OnLogObserverDelegate] = []
+
+        # Set the multiprocessing start method
+        try:
+            set_start_method("spawn")
+        except RuntimeError:
+            pass
 
         # Construct the render process server in its own process, passing it the backend string and the command queues
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
@@ -101,7 +112,7 @@ class SSVRenderProcessClient:
         """
         # While dictionaries are atomic in python, it's still a good idea to use a lock
         with self._query_futures_lock:
-            result = Future()
+            result: Future[Any] = Future()
             query_id = self._query_future_id_counter
             self._query_future_id_counter += 1
             self._query_futures[query_id] = result
@@ -129,7 +140,7 @@ class SSVRenderProcessClient:
         """
         self._on_render_observers.remove(observer)
 
-    def subscribe_on_log(self, observer: OnRenderObserverDelegate):
+    def subscribe_on_log(self, observer: OnLogObserverDelegate):
         """
         Subscribes an event handler to the on_log event, triggered when the render process logs a message.
 
@@ -137,7 +148,7 @@ class SSVRenderProcessClient:
         """
         self._on_log_observers.append(observer)
 
-    def unsubscribe_on_log(self, observer: OnRenderObserverDelegate):
+    def unsubscribe_on_log(self, observer: OnLogObserverDelegate):
         """
         Unsubscribes an event handler from the on_log event.
 
@@ -145,7 +156,7 @@ class SSVRenderProcessClient:
         """
         self._on_log_observers.remove(observer)
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: (int, int), uniform_name: str,
+    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
                             components: int = 4, dtype: str = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
@@ -156,7 +167,8 @@ class SSVRenderProcessClient:
         :param size: the new resolution of the framebuffer.
         :param uniform_name: the name of the uniform to bind this frame buffer to.
         :param components: how many vector components should each pixel have (RGB=3, RGBA=4).
-        :param dtype: the data type for each pixel component (see: https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
+        :param dtype: the data type for each pixel component (see:
+                      https://moderngl.readthedocs.io/en/5.8.2/topics/texture_formats.html).
         """
         self._command_queue_tx.put(("UFBO", frame_buffer_uid, order, size, uniform_name, components, dtype))
 
@@ -222,7 +234,7 @@ class SSVRenderProcessClient:
 
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
                              vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
-                             vertex_attributes: Optional[tuple[str]]):
+                             vertex_attributes: Optional[Tuple[str, ...]]):
         """
         Updates the data inside a vertex buffer.
 
@@ -238,7 +250,7 @@ class SSVRenderProcessClient:
 
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
-                       rect: Optional[Union[tuple[int, int, int, int], tuple[int, int, int, int, int, int]]],
+                       rect: Optional[Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]],
                        treat_as_normalized_integer: bool):
         """
         Creates or updates a texture from the NumPy array provided.
@@ -317,7 +329,7 @@ class SSVRenderProcessClient:
         """
         self._command_queue_tx.put(("RdCp", filename))
 
-    def get_context_info(self, timeout: Optional[float] = None) -> Optional[dict[str, str]]:
+    def get_context_info(self, timeout: Optional[float] = None) -> Optional[Dict[str, str]]:
         """
         Returns the OpenGL context information.
 
@@ -326,7 +338,7 @@ class SSVRenderProcessClient:
         """
         return self.__wait_async_query("GtCt", timeout=timeout)
 
-    def get_frame_times(self, timeout: Optional[float] = None) -> Optional[tuple[float, float, float, float]]:
+    def get_frame_times(self, timeout: Optional[float] = None) -> Optional[Tuple[float, float, float, float]]:
         """
         Gets the frame time statistics from the renderer. This function is blocking and shouldn't be called too often.
 
@@ -346,7 +358,7 @@ class SSVRenderProcessClient:
         """
         return self.__wait_async_query("GtFt", timeout=timeout)
 
-    def get_supported_extensions(self, timeout: Optional[float] = None) -> Optional[set[str]]:
+    def get_supported_extensions(self, timeout: Optional[float] = None) -> Optional[Set[str]]:
         """
         Gets the set of supported OpenGL shader compiler extensions.
 

@@ -1,12 +1,12 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
-import typing
 from enum import Enum
 import numpy as np
 import math
 from abc import ABC, abstractmethod
 from numpy import typing as npt
+from typing import Tuple
 
 from .ssv_logging import log
 
@@ -15,12 +15,13 @@ class MoveDir(Enum):
     """
     Represents a cardinal direction to move in.
     """
-    FORWARD = 0
-    BACKWARD = 1
-    LEFT = 2
-    RIGHT = 3
-    UP = 4
-    DOWN = 5
+    NONE = 0
+    FORWARD = 1
+    BACKWARD = 2
+    LEFT = 3
+    RIGHT = 4
+    UP = 5
+    DOWN = 6
 
 
 class SSVCamera:
@@ -28,13 +29,13 @@ class SSVCamera:
     A simple class representing a camera.
     """
 
-    position: npt.NDArray[3]
+    position: npt.NDArray[np.float32]
     """The camera's position in 3D space."""
-    direction: npt.NDArray[3]
+    direction: npt.NDArray[np.float32]
     """A normalised vector pointing in the direction the camera is facing."""
     fov: float
     """The field of view of the camera in degrees."""
-    clip_dist: tuple[float, float]
+    clip_dist: Tuple[float, float]
     """The distances of the near and far clipping planes respectively."""
     aspect_ratio: float
     """The aspect ratio of the render buffer."""
@@ -48,24 +49,24 @@ class SSVCamera:
         self._mouse_old_pos = np.array([0., 0.], dtype=np.int32)
         self._rotation = np.array([math.pi, 0.], dtype=np.float32)
         self._mouse_was_pressed = False
-        self._view_matrix = np.identity(4, dtype=np.float32)
+        self._view_matrix: npt.NDArray[np.float32] = np.identity(4, dtype=np.float32)  # type: ignore[annotation-unchecked]
         self._projection_matrix = np.identity(4, dtype=np.float32)
         self._up_vec = np.array([0., 1., 0.], dtype=np.float32)
 
     @staticmethod
-    def _cross_3d(a: npt.NDArray[float], b: npt.NDArray[float]) -> npt.NDArray[float]:
-        res = np.empty(3, dtype=np.float32)
+    def _cross_3d(a: npt.NDArray[np.float32], b: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+        res: npt.NDArray[np.float32] = np.empty(3, dtype=np.float32)
         res[0] = a[1] * b[2] - a[2] * b[1]
         res[1] = -(a[0] * b[2] - a[2] * b[0])
         res[2] = a[0] * b[1] - a[1] * b[0]
         return res
 
     @staticmethod
-    def _length_3d(a: npt.NDArray[float]) -> float:
+    def _length_3d(a: npt.NDArray[np.float32]) -> float:
         return np.sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
 
     @property
-    def rotation_matrix(self) -> npt.NDArray[float]:
+    def rotation_matrix(self) -> npt.NDArray[np.float32]:
         """
         Gets the current view matrix of the camera, without the translation component.
         """
@@ -73,17 +74,18 @@ class SSVCamera:
         right /= SSVCamera._length_3d(right)
         up = SSVCamera._cross_3d(right, self.direction)
         up /= SSVCamera._length_3d(up)
-        rot_matrix = np.identity(4, dtype=np.float32)
+        rot_matrix: npt.NDArray[np.float32] = np.identity(4, dtype=np.float32)
         rot_matrix[0:3, 0] = right
         rot_matrix[0:3, 1] = up
         rot_matrix[0:3, 2] = self.direction
         return rot_matrix
 
     @property
-    def view_matrix(self) -> npt.NDArray[float]:
+    def view_matrix(self) -> npt.NDArray[np.float32]:
         """
         Gets the current view matrix of the camera.
         """
+        # noinspection PyTypeChecker
         self._view_matrix = np.array((
             (1, 0, 0, 0),
             (0, 1, 0, 0),
@@ -91,6 +93,7 @@ class SSVCamera:
             (-self.position[0], -self.position[1], -self.position[2], 1),
         ), dtype=np.float32) @ self.rotation_matrix
 
+        # noinspection PyTypeChecker
         return self._view_matrix
 
     @property
@@ -104,7 +107,8 @@ class SSVCamera:
         self._projection_matrix[1, 1] = s1
         self._projection_matrix[2, 2] = self.clip_dist[1] / (self.clip_dist[0] - self.clip_dist[1])
         self._projection_matrix[2, 3] = -1
-        self._projection_matrix[3, 2] = (self.clip_dist[0] * self.clip_dist[1]) / (self.clip_dist[0] - self.clip_dist[1])
+        self._projection_matrix[3, 2] = ((self.clip_dist[0] * self.clip_dist[1])
+                                         / (self.clip_dist[0] - self.clip_dist[1]))
         self._projection_matrix[3, 3] = 0
         return self._projection_matrix
 
@@ -116,16 +120,19 @@ class SSVCameraController(SSVCamera, ABC):
 
     move_speed: float
     """The movement speed of the camera."""
+    zoom_speed: float
+    """The zooming speed of the camera."""
     pan_speed: float
     """The panning speed of the camera in radians per pixel of mouse movement."""
 
     def __init__(self):
         super().__init__()
-        self.move_speed = 0.1
+        self.move_speed = 1.0
+        self.zoom_speed = 0.1
         self.pan_speed = 0.005
 
     @abstractmethod
-    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
+    def mouse_change(self, mouse_pos: Tuple[int, int], mouse_down: Tuple[bool, bool, bool]):
         ...
 
     @abstractmethod
@@ -137,7 +144,7 @@ class SSVLookCameraController(SSVCameraController):
     """
     A camera controller which supports mouse look controls.
     """
-    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
+    def mouse_change(self, mouse_pos: Tuple[int, int], mouse_down: Tuple[bool, bool, bool]):
         """
         Updates the camera with a mouse event.
 
@@ -158,6 +165,7 @@ class SSVLookCameraController(SSVCameraController):
         else:
             self._mouse_was_pressed = False
 
+    # noinspection DuplicatedCode
     def move(self, direction: MoveDir, distance: float = 1.0):
         """
         Updates the camera position with a movement event.
@@ -184,7 +192,7 @@ class SSVOrbitCameraController(SSVCameraController):
     """
     A camera controller which supports orbiting around a given target.
     """
-    _target_pos: npt.NDArray[3]
+    _target_pos: npt.NDArray[np.float32]
     _orbit_dist: float
 
     def __init__(self):
@@ -219,7 +227,7 @@ class SSVOrbitCameraController(SSVCameraController):
 
         self.position[:] = self._target_pos + self.direction * self._orbit_dist
 
-    def mouse_change(self, mouse_pos: tuple[int, int], mouse_down: tuple[bool, bool, bool]):
+    def mouse_change(self, mouse_pos: Tuple[int, int], mouse_down: Tuple[bool, bool, bool]):
         """
         Updates the camera with a mouse event.
 
@@ -245,7 +253,8 @@ class SSVOrbitCameraController(SSVCameraController):
         elif mouse_down[2]:
             # Pan
             if self._mouse_was_pressed:
-                mouse_delta = np.append((np.array(mouse_pos, dtype=np.float32) - self._mouse_old_pos) * self.pan_speed, (0, 0))
+                mouse_delta = np.append((np.array(mouse_pos, dtype=np.float32) - self._mouse_old_pos) * self.pan_speed,
+                                        (0, 0))
                 self._target_pos += (self.rotation_matrix @ mouse_delta)[:3]
 
                 self._update_direction_position()
@@ -263,9 +272,10 @@ class SSVOrbitCameraController(SSVCameraController):
 
         :param distance: how far to zoom in.
         """
-        self.orbit_dist += self.orbit_dist * distance * self.move_speed
+        self.orbit_dist += self.orbit_dist * distance * self.zoom_speed
         self._update_direction_position()
 
+    # noinspection DuplicatedCode
     def move(self, direction: MoveDir, distance: float = 1.0):
         """
         Updates the camera position with a movement event.
@@ -273,17 +283,20 @@ class SSVOrbitCameraController(SSVCameraController):
         :param direction: the direction to move in.
         :param distance: the distance to move.
         """
+        dir_vec = np.zeros(4, dtype=np.float32)
         if direction == MoveDir.UP:
-            self.target_pos[1] += self.move_speed * distance
+            dir_vec[1] = self.move_speed * distance
         elif direction == MoveDir.DOWN:
-            self.target_pos[1] -= self.move_speed * distance
+            dir_vec[1] = -self.move_speed * distance
         elif direction == MoveDir.RIGHT:
-            self.target_pos[0] += self.move_speed * distance
+            dir_vec[0] = self.move_speed * distance
         elif direction == MoveDir.LEFT:
-            self.target_pos[0] -= self.move_speed * distance
+            dir_vec[0] = -self.move_speed * distance
         elif direction == MoveDir.FORWARD:
-            self.target_pos[2] += self.move_speed * distance
+            dir_vec[2] = -self.move_speed * distance
         elif direction == MoveDir.BACKWARD:
-            self.target_pos[2] -= self.move_speed * distance
+            dir_vec[2] = self.move_speed * distance
+        self._target_pos += (self.rotation_matrix @ dir_vec)[:3]
+        self._update_direction_position()
         # log(f"Moved position: {self.position}", severity=logging.INFO)
 

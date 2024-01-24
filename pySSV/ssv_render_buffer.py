@@ -1,4 +1,4 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Any
@@ -48,7 +48,8 @@ class SSVRenderBuffer:
         self._dtype = dtype
 
         # Register this frame buffer
-        render_process_client.update_frame_buffer(self._render_buffer_uid, order, size, render_buffer_name, components, dtype)
+        render_process_client.update_frame_buffer(self._render_buffer_uid, order, size, render_buffer_name,
+                                                  components, dtype)
         # TODO: Support sampler3D
         preprocessor.add_dynamic_uniform(render_buffer_name, "sampler2D")
 

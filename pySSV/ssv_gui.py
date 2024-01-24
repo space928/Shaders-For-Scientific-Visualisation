@@ -5,9 +5,14 @@ import math
 
 import numpy as np
 import numpy.typing as npt
-from typing import Callable, Optional, Union, NewType
+from typing import Callable, Optional, Union, Tuple, List, Dict
 from enum import IntFlag, IntEnum
 import logging
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 from .ssv_canvas import SSVCanvas
 from .ssv_render_buffer import SSVRenderBuffer
@@ -15,9 +20,9 @@ from .ssv_vertex_buffer import SSVVertexBuffer
 from .ssv_colour import Colour
 from . import ssv_colour
 from .ssv_future import Reference
-from .ssv_fonts import SSVFont, ssv_font_noto_sans_sb
+from .ssv_fonts import SSVFont, SSVCharacterDefinition, ssv_font_noto_sans_sb
 from .ssv_callback_dispatcher import SSVCallbackDispatcher
-from . import log
+from .ssv_logging import log
 
 
 class SSVGUIShaderMode(IntFlag):
@@ -33,7 +38,7 @@ class SSVGUIShaderMode(IntFlag):
     OUTLINE = 32
 
     @staticmethod
-    def get_vertex_attributes(shader_mode: int) -> tuple[str, ...]:
+    def get_vertex_attributes(shader_mode: int) -> Tuple[str, ...]:
         """
         Gets the tuple of vertex attribute names required to support this shader mode.
 
@@ -91,12 +96,12 @@ class CachedVertexArray:
     used_space: int
 
 
-SSVGUIDrawDelegate = NewType("SSVGUIDrawDelegate", Callable[["SSVGUI", Rect], None])
+SSVGUIDrawDelegate: TypeAlias = Callable[["SSVGUI", Rect], None]
 """
 A delegate for a GUIElement draw function. It should follow the signature: ``draw(gui: SSVGUI, rect: Rect) -> None``
 """
 
-SSVGUIPreLayoutDelegate = NewType("SSVGUIPreLayoutDelegate", Callable[["SSVGUI"], tuple[int, int]])
+SSVGUIPreLayoutDelegate: TypeAlias = Callable[["SSVGUI"], Tuple[int, int]]
 """
 A delegate for a GUIElement pre layout function. It should follow the signature: 
 ``draw(gui: SSVGUI) -> tuple[width: int, height: int]``
@@ -141,7 +146,7 @@ class SSVGUILayoutContainer:
         self._pad = pad
         self._enabled = enabled
         self._gui = gui
-        self._gui_elements: list[SSVGUIElement] = []
+        self._gui_elements: List[SSVGUIElement] = []
 
     def draw(self, gui: "SSVGUI", max_bounds: Rect):
         """
@@ -185,9 +190,10 @@ class SSVGUILayoutContainer:
             exp_dim = bound_dim / len(layout_elements)
         squeezing = self._squeeze and free_space < 0
 
-        x, y = bounds_padded.x, bounds_padded.y
+        x, y = float(bounds_padded.x), float(bounds_padded.y)
         last_bounds = copy.copy(max_bounds)
         for element in self._gui_elements:
+            # noinspection PyProtectedMember
             gui._control_ind += 1
             if not element.layout:
                 element.draw_func(gui, bounds_padded)
@@ -199,28 +205,26 @@ class SSVGUILayoutContainer:
             # log(f"   element expand={element.expand} cw={element.control_width} exp_dim={exp_dim} x={x} y={y}", severity=logging.INFO)
             if self.vertical:
                 flex_dim = exp_dim if element.expand or squeezing else element.control_height
-                last_bounds = Rect(x, y, min(bounds_padded.width, element.control_width), flex_dim)
+                last_bounds = Rect(round(x), round(y), min(bounds_padded.width, element.control_width), round(flex_dim))
                 element.draw_func(gui, last_bounds)
                 y += flex_dim
             else:
                 flex_dim = exp_dim if element.expand or squeezing else element.control_width
-                last_bounds = Rect(x, y, flex_dim, min(bounds_padded.height, element.control_height))
+                last_bounds = Rect(round(x), round(y), round(flex_dim), min(bounds_padded.height, element.control_height))
                 element.draw_func(gui, last_bounds)
                 x += flex_dim
 
     @property
     def min_width(self) -> int:
         """Measures the minimum width of a given layout group by recursively measuring all of its children."""
-        return sum(
-            [e.control_width if e.pre_layout_func is None else e.pre_layout_func(self)[0] for e in self._gui_elements if
-             e.layout and not e.overlay_last])
+        return sum([e.control_width if e.pre_layout_func is None else e.pre_layout_func(self._gui)[0]
+                    for e in self._gui_elements if e.layout and not e.overlay_last])
 
     @property
     def min_height(self) -> int:
         """Measures the minimum height of a given layout group by recursively measuring all of its children."""
-        return sum(
-            [e.control_height if e.pre_layout_func is None else e.pre_layout_func(self)[1] for e in self._gui_elements
-             if e.layout and not e.overlay_last])
+        return sum([e.control_height if e.pre_layout_func is None else e.pre_layout_func(self._gui)[1]
+                    for e in self._gui_elements if e.layout and not e.overlay_last])
 
     def add_element(self, draw_callback: SSVGUIDrawDelegate, control_width: int, control_height: int,
                     expand: bool = False, layout: bool = True, overlay_last: bool = False,
@@ -267,15 +271,15 @@ class SSVGUI:
         self._on_post_gui_callback: SSVCallbackDispatcher[Callable[[SSVGUI], None]] = SSVCallbackDispatcher()
 
         self._resolution = render_buffer.size
-        self._vb_cache: dict[int, CachedVertexArray] = {}
-        self._layout_groups: list[SSVGUILayoutContainer] = []
+        self._vb_cache: Dict[int, CachedVertexArray] = {}
+        self._layout_groups: List[SSVGUILayoutContainer] = []
         self._capturing_control_ind = -1
         self._control_ind = 0
 
         self._layout_control_height = 26
         self._layout_control_width = 400
         self._padding = (2, 2, 2, 2)
-        self._rounding_radius = 3
+        self._rounding_radius = 3.0
         # TODO: Custom fonts support
         self._font = ssv_font_noto_sans_sb
 
@@ -284,8 +288,8 @@ class SSVGUI:
         if font_tex is not None:
             font_tex.release()
         font_tex = self.canvas.texture(self._font.bitmap, "uFontTex")
-        font_tex.linear_filtering = True
-        font_tex.linear_mipmap_filtering = True
+        font_tex.linear_filtering = True  # type: ignore
+        font_tex.linear_mipmap_filtering = True  # type: ignore
         self._set_logging_stream = False
         self._last_mouse_down = False
         self.canvas.on_start(lambda: self._update_gui())
@@ -300,6 +304,7 @@ class SSVGUI:
         :param should_set_logging_stream: a hack to force the logging stream to be directed to the canvas log.
         """
         if should_set_logging_stream and not self._set_logging_stream:
+            # noinspection PyProtectedMember
             self.canvas._set_logging_stream()
             self._set_logging_stream = True
         for v in self._vb_cache.values():
@@ -390,12 +395,12 @@ class SSVGUI:
         self._layout_control_width = value
 
     @property
-    def padding(self) -> tuple[int, int, int, int]:
+    def padding(self) -> Tuple[int, int, int, int]:
         """Gets or sets the amount of padding between GUI elements in pixels."""
         return self._padding
 
     @padding.setter
-    def padding(self, value: tuple[int, int, int, int]):
+    def padding(self, value: Tuple[int, int, int, int]):
         self._padding = value
 
     @property
@@ -475,7 +480,7 @@ class SSVGUI:
         """
         layout = SSVGUILayoutContainer(self, False, True, squeeze, pad)
 
-        def pre_layout(gui: "SSVGUI") -> tuple[int, int]:
+        def pre_layout(gui: "SSVGUI") -> Tuple[int, int]:
             return layout.min_width, self._layout_control_height if height is None else height
 
         if len(self._layout_groups) > 0:
@@ -512,7 +517,7 @@ class SSVGUI:
         """
         layout = SSVGUILayoutContainer(self, True, True, squeeze, pad)
 
-        def pre_layout(gui: "SSVGUI") -> tuple[int, int]:
+        def pre_layout(gui: "SSVGUI") -> Tuple[int, int]:
             return self._layout_control_width if width is None else width, layout.min_height
 
         if len(self._layout_groups) > 0:
@@ -560,7 +565,7 @@ class SSVGUI:
             _enabled = enabled
         layout = SSVGUILayoutContainer(self, True, _enabled, squeeze, pad)
 
-        def pre_layout(gui: "SSVGUI") -> tuple[int, int]:
+        def pre_layout(gui: "SSVGUI") -> Tuple[int, int]:
             if _enabled:
                 min_height = layout.min_height
             else:
@@ -585,7 +590,7 @@ class SSVGUI:
         if not layout.vertical:
             raise ValueError("Current layout group is not a toggle group!")
 
-    def _get_rect_corners(self, bounds: Rect, local_rect: Optional[Rect]) -> tuple[float, float, float, float]:
+    def _get_rect_corners(self, bounds: Rect, local_rect: Optional[Rect]) -> Tuple[float, float, float, float]:
         """
         Gets the coordinates of the bounding corners of a rect.
 
@@ -613,7 +618,7 @@ class SSVGUI:
         """
         self._layout_groups[-1].add_element(lambda x, y: None,
                                             self._layout_control_width if width is None else width,
-                                            self._layout_control_height / 2 if height is None else height,
+                                            self._layout_control_height // 2 if height is None else height,
                                             expand=False)
 
     def rect(self, colour: Colour, rect: Optional[Rect] = None, overlay_last: bool = False):
@@ -689,6 +694,60 @@ class SSVGUI:
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None, overlay_last=overlay_last)
 
+    def _draw_chars(self, char_defs: List[SSVCharacterDefinition], pos: Tuple[float, float],
+                    font_tex_size: Tuple[int, int],
+                    colour: Colour, scale: float, weight: float, shear_x: float, enforce_hinting: bool,
+                    render_mode: SSVGUIShaderMode):
+        """
+        Draws a string of characters to the GUI. This function expects that the text has already been transformed and
+        clipped as needed by the caller.
+
+        :param char_defs: a list of character definitions to draw from the font file.
+        :param pos: the position in screen-space to start drawing from. The first character's bottom-left corner is
+                    placed at this position; subsequent characters are placed according to the font file.
+        :param font_tex_size: the size of the font bitmap in pixels. (width, height)
+        :param colour: the text colour.
+        :param scale: a float to scale the characters by. A value of 1 would draw the characters at the font file's
+                      native size.
+        :param weight: the font weight modifier (0-1).
+        :param shear_x: the amount of horizontal shear to apply to characters in pixels.
+        :param enforce_hinting: whether positions should be rounded to pixels to help with hinting.
+        :param render_mode: the shader render mode flags for this text.
+        """
+        verts = self._get_vertex_buffer(render_mode, (2 + 4 + 2 + 1) * 6 * len(char_defs))
+        col = colour.astuple
+        vert_ind = 0
+        font_width, font_height = font_tex_size[0], font_tex_size[1]
+        draw_x, draw_y = pos[0], pos[1]
+        if enforce_hinting:
+            draw_x, draw_y = round(draw_x), round(draw_y)
+        for char_def in char_defs:
+            # Compute the pixel space coordinates of the character quad
+            x0 = draw_x + char_def.x_offset * scale
+            x1 = draw_x + char_def.x_offset * scale + char_def.width * scale
+            y0 = draw_y + char_def.y_offset * scale
+            y1 = draw_y + char_def.y_offset * scale + char_def.height * scale
+            # Compute texture-space coordinates of the character
+            bm_x0 = char_def.x / font_width
+            bm_x1 = (char_def.x + char_def.width) / font_width
+            bm_y0 = char_def.y / font_height
+            bm_y1 = (char_def.y + char_def.height) / font_height
+            # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour, vec2 char,
+            # float weight)
+            verts[vert_ind:vert_ind + (2 + 4 + 2 + 1) * 6] = (
+                x0, y0, *col, bm_x0, bm_y0, 1. - weight,
+                x1, y0, *col, bm_x1, bm_y0, 1. - weight,
+                x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - weight,
+
+                x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - weight,
+                x1, y0, *col, bm_x1, bm_y0, 1. - weight,
+                x1 + shear_x, y1, *col, bm_x1, bm_y1, 1. - weight
+            )
+            vert_ind += (2 + 4 + 2 + 1) * 6
+            draw_x += char_def.x_advance * scale
+            if enforce_hinting:
+                draw_x = round(draw_x)
+
     def label(self, text: str, colour: Colour = ssv_colour.ui_text, font_size: Optional[float] = None,
               x_offset: int = 0, weight: float = 0.5, italic: bool = False, shadow: bool = False,
               align: TextAlign = TextAlign.LEFT, enforce_hinting: bool = True,
@@ -758,15 +817,15 @@ class SSVGUI:
             if align == TextAlign.CENTER:
                 fulltext_width = sum(
                     [self._font.chars.get(char, self._font.chars[' ']).x_advance for char in text]) * scale
-                draw_x = (draw_x + max_x - fulltext_width) / 2
+                draw_x = round((draw_x + max_x - fulltext_width) / 2)
             elif align == TextAlign.RIGHT:
                 fulltext_width = sum(
                     [self._font.chars.get(char, self._font.chars[' ']).x_advance for char in text]) * scale
-                draw_x = max_x - fulltext_width
+                draw_x = round(max_x - fulltext_width)
 
             char_defs = [self._font.chars.get(char, self._font.chars[' ']) for char in text]
             # Trim the chars to fit the bounds
-            trim_x = draw_x
+            trim_x = float(draw_x)
             for i, c in enumerate(char_defs):
                 trim_x += c.x_advance * scale
                 if trim_x > max_x:
@@ -774,43 +833,100 @@ class SSVGUI:
                     char_defs = char_defs[:i]
                     break
 
-            verts = gui._get_vertex_buffer(render_mode, (2+4+2+1) * 6 * len(char_defs))
-            col = colour.astuple
-            vert_ind = 0
-
-            if enforce_hinting:
-                draw_x, draw_y = round(draw_x), round(draw_y)
-            for char_def in char_defs:
-                # Compute the pixel space coordinates of the character quad
-                x0 = draw_x + char_def.x_offset * scale
-                x1 = draw_x + char_def.x_offset * scale + char_def.width * scale
-                y0 = draw_y + char_def.y_offset * scale
-                y1 = draw_y + char_def.y_offset * scale + char_def.height * scale
-                # Compute texture-space coordinates of the character
-                bm_x0 = char_def.x / font_width
-                bm_x1 = (char_def.x + char_def.width) / font_width
-                bm_y0 = char_def.y / font_height
-                bm_y1 = (char_def.y + char_def.height) / font_height
-                # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour, vec2 char,
-                # float weight)
-                verts[vert_ind:vert_ind+(2+4+2+1)*6] = (
-                    x0, y0, *col, bm_x0, bm_y0, 1. - _weight,
-                    x1, y0, *col, bm_x1, bm_y0, 1. - _weight,
-                    x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - _weight,
-
-                    x0 + shear_x, y1, *col, bm_x0, bm_y1, 1. - _weight,
-                    x1, y0, *col, bm_x1, bm_y0, 1. - _weight,
-                    x1 + shear_x, y1, *col, bm_x1, bm_y1, 1. - _weight
-                )
-                vert_ind += (2+4+2+1)*6
-                draw_x += char_def.x_advance * scale
-                if enforce_hinting:
-                    draw_x = round(draw_x)
-            # verts = np.concatenate((verts, n_verts), dtype=np.float32)
-            # self._update_vertex_buffer(render_mode, verts)
+            # Now create the actual geometry for the text
+            gui._draw_chars(char_defs, (draw_x, draw_y), (font_width, font_height), colour, scale,
+                            _weight, shear_x, enforce_hinting, render_mode)
 
         self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
                                             expand=False, layout=rect is None, overlay_last=overlay_last)
+
+    def label_3d(self, text: str, pos: Tuple[float, float, float],
+                 colour: Colour = ssv_colour.ui_text, font_size: Optional[float] = None,
+                 weight: float = 0.5, italic: bool = False, shadow: bool = False,
+                 align: TextAlign = TextAlign.LEFT, enforce_hinting: bool = True):
+        """
+        Creates a label GUI element which is transformed in 3d space using the canvas's camera.
+
+        :param text: the text to display.
+        :param pos: the 3d position of the label.
+        :param colour: the colour of the rectangle.
+        :param font_size: the font size in pt.
+        :param weight: the font weight [0-1], where 0.5 is the native font weight. The font renderer uses SDF fonts
+                       which allows variable font weight rendering for free within certain limits (since this is only
+                       an effect, at the extremes type quality is degraded).
+        :param italic: whether the text should be rendered in faux italic. This effect simply applies a shear
+                       transformation to the rendered characters, so it will work on any font, but won't look as good
+                       as a proper italic font.
+        :param shadow: whether the text should be rendered with a shadow. This incurs a very small extra rendering
+                       cost, and tends to have visual artifacts when the font weight is high.
+        :param align: the horizontal alignment of the text.
+        :param enforce_hinting: this option applies rounding to the font size and position to force it to line up with
+                                the pixel grid to improve sharpness. This is only effective if the font texture was
+                                rendered with hinting enabled in the first place. This can result in aliasing when
+                                animating font size/text position.
+        """
+        def draw(gui: SSVGUI, bounds: Rect):
+            render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.TEXT
+            if shadow:
+                render_mode |= SSVGUIShaderMode.SHADOWED
+
+            # TODO: The camera view/projection matrix should be cached to avoid calculating it so often...
+            pos_clip = gui.canvas.main_camera.view_matrix @ gui.canvas.main_camera.projection_matrix @ pos
+            # Clipping planes
+            if 0 > pos_clip[2] > 1:
+                return
+            screen_x = float((pos_clip[0]*0.5+0.5) * gui._resolution[0])
+            screen_y = float((pos_clip[1]*0.5+0.5) * gui._resolution[1])
+
+            # Font sizing & positioning
+            _font_size = (font_size if font_size is not None else self._font.size)
+            if enforce_hinting:
+                _font_size = round(_font_size)
+            if font_size is not None:
+                scale = _font_size / self._font.size
+            else:
+                scale = 1
+
+            _weight = weight
+
+            shear_x = -0.2 * _font_size if italic else 0
+            draw_x = screen_x
+
+            # Centre on the y-axis, there's some janky tuning in here to make it behave
+            diff_y = self._font.base_height * scale
+            draw_y = screen_y + diff_y
+            font_width, font_height = self._font.width, self._font.height
+
+            # Align on the x-axis
+            if align == TextAlign.CENTER:
+                fulltext_width = sum(
+                    [self._font.chars.get(char, self._font.chars[' ']).x_advance for char in text]) * scale
+                draw_x -= fulltext_width / 2
+            elif align == TextAlign.RIGHT:
+                fulltext_width = sum(
+                    [self._font.chars.get(char, self._font.chars[' ']).x_advance for char in text]) * scale
+                draw_x -= fulltext_width
+
+            char_defs = [self._font.chars.get(char, self._font.chars[' ']) for char in text]
+            # Trim the chars to fit the bounds
+            trim_x = draw_x
+            i_0 = 0
+            for i, c in enumerate(char_defs):
+                if trim_x > gui._resolution[0]:
+                    # This char (and consequently all subsequent chars) is entirely off the right edge of the screen
+                    char_defs = char_defs[i_0:i]
+                    break
+                trim_x += c.x_advance * scale
+                if trim_x < 0:
+                    # This char is entirely off the left edge of the screen
+                    i_0 = i
+
+            # Now create the actual geometry for the text
+            gui._draw_chars(char_defs, (draw_x, draw_y), (font_width, font_height), colour, scale,
+                            _weight, shear_x, enforce_hinting, render_mode)
+
+        self._layout_groups[-1].add_element(draw, self._layout_control_width, self._layout_control_height,
+                                            expand=False, layout=False, overlay_last=False)
 
     def button(self, text: str, colour: Optional[Colour] = None, radius: Optional[float] = None,
                rect: Optional[Rect] = None) -> Reference[bool]:
@@ -836,6 +952,7 @@ class SSVGUI:
         # available. Since this is all single threaded, the future's result should never be waited for.
         res = Reference(False)
 
+        # noinspection DuplicatedCode
         def draw(gui: SSVGUI, bounds: Rect):
             render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.ROUNDING
 
@@ -867,12 +984,12 @@ class SSVGUI:
                 else:
                     col = ssv_colour.ui_element_bg.astuple
             else:
-                col = colour
+                colour_tinted = colour
                 if click:
-                    col *= 0.8
+                    colour_tinted *= 0.8
                 elif hover:
-                    col += .3
-                col = col.astuple
+                    colour_tinted += .3
+                col = colour_tinted.astuple
             verts[:] = (x0, y0, *col, 0, 0, bounds.width, bounds.height, _radius,
                         x1, y0, *col, 1, 0, bounds.width, bounds.height, _radius,
                         x0, y1, *col, 0, 1, bounds.width, bounds.height, _radius,
@@ -975,13 +1092,13 @@ class SSVGUI:
                 else:
                     col = ssv_colour.ui_element_bg.astuple
             else:
-                col = colour
-                col_track = col * 0.8
+                colour_tinted = colour
+                col_track = (colour * 0.8).astuple
                 if click:
-                    col *= 0.8
+                    colour_tinted *= 0.8
                 elif hover:
-                    col *= 1.4
-                col = col.astuple
+                    colour_tinted *= 1.4
+                col = colour_tinted.astuple
             # Track
             verts[:] = (tx0, ty0, *col_track, 0, 0, bounds.width, track_thickness, 1.,
                         tx1, ty0, *col_track, 1, 0, bounds.width, track_thickness, 1.,
@@ -1029,6 +1146,7 @@ class SSVGUI:
         """
         res = value if isinstance(value, Reference) else Reference(value)
 
+        # noinspection DuplicatedCode
         def draw(gui: SSVGUI, bounds: Rect):
             render_mode = SSVGUIShaderMode.TRANSPARENT | SSVGUIShaderMode.ROUNDING | SSVGUIShaderMode.OUTLINE
 
@@ -1064,12 +1182,12 @@ class SSVGUI:
                 else:
                     col = ssv_colour.ui_element_bg.astuple
             else:
-                col = colour
+                colour_tinted = colour
                 if click or checked:
-                    col *= 0.8
+                    colour_tinted *= 0.8
                 elif hover:
-                    col *= 1.4
-                col = col.astuple
+                    colour_tinted *= 1.4
+                col = colour_tinted.astuple
             verts = gui._get_vertex_buffer(render_mode, (2+4+2+2+1)*(6*3 if checked else 6))
             # Generate vertices for a quad. The vertex attributes to fill are (vec2 pos, vec4 colour,
             # vec2 texcoord, vec2 size, float radius)

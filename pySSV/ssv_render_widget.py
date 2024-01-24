@@ -1,21 +1,26 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 
-from ipywidgets import DOMWidget, CallbackDispatcher
-from io import StringIO
-from typing import NewType, Callable
-from traitlets import Unicode, Enum, Int, Bool, Float, Bytes
+from ipywidgets import DOMWidget, CallbackDispatcher  # type: ignore
+from io import TextIOBase
+from typing import Callable
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
+from traitlets import Unicode, Enum, Int, Bool, Float, Bytes  # type: ignore
 from ._frontend import module_name, module_version
 from .ssv_render_process_server import SSVStreamingMode
 
 
-OnMessageDelegate = NewType("OnMessageDelegate", Callable[[], None])
-OnClickDelegate = NewType("OnClickDelegate", Callable[[bool, int], None])
-OnKeyDelegate = NewType("OnKeyDelegate", Callable[[str, bool], None])
-OnWheelDelegate = NewType("OnWheelDelegate", Callable[[float], None])
+OnMessageDelegate: TypeAlias = Callable[[], None]
+OnClickDelegate: TypeAlias = Callable[[bool, int], None]
+OnKeyDelegate: TypeAlias = Callable[[str, bool], None]
+OnWheelDelegate: TypeAlias = Callable[[float], None]
 
 
 class SSVRenderWidget(DOMWidget):
@@ -141,7 +146,7 @@ class SSVRenderWidget(DOMWidget):
         self._renderdoc_capture_handlers.register_callback(callback, remove=remove)
 
 
-class SSVRenderWidgetLogIO(StringIO):
+class SSVRenderWidgetLogIO(TextIOBase):
     def __init__(self, widget: SSVRenderWidget):
         self._widget = widget
 

@@ -1,10 +1,14 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import io
 import logging
 import os.path
-from importlib.resources import as_file, files
-import pcpp
+import sys
+if sys.version_info >= (3, 9):
+    from importlib.resources import as_file, files
+else:
+    from importlib.resources import open_text
+import pcpp  # type: ignore
 
 from .ssv_logging import log
 
@@ -34,12 +38,19 @@ class SSVShaderSourcePreprocessor(pcpp.Preprocessor):
             return io.StringIO(self.shader_source)
 
         try:
-            with as_file(files("pySSV.shaders").joinpath(filename)) as f:
-                ret = f.open('r', encoding=self.assume_encoding)
-                bom = ret.read(1)
+            if sys.version_info >= (3, 9):
+                with as_file(files("pySSV.shaders").joinpath(filename)) as f:
+                    ret = f.open('r', encoding=self.assume_encoding)
+                    bom = ret.read(1)
+                    if bom != '\ufeff':
+                        ret.seek(0)
+                    return ret
+            else:
+                f = open_text("pySSV.shaders", filename, encoding=self.assume_encoding)
+                bom = f.read(1)
                 if bom != '\ufeff':
-                    ret.seek(0)
-                return ret
+                    f.seek(0)
+                return f
         except Exception as e:
             self.on_error(self.lastdirective.source, self.lastdirective.lineno,
                           f"Encountered exception while trying to open #include file: {includepath}\n"

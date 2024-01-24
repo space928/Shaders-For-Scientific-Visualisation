@@ -1,9 +1,8 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-import sys
-from abc import abstractmethod
-import io
 import logging
+from abc import abstractmethod
+from io import TextIOBase
 from typing import Union, TextIO
 
 
@@ -21,7 +20,7 @@ class SSVFormatter(logging.Formatter):
             return logging.Formatter.format(self, record)
 
 
-class SSVLogStream(io.StringIO):
+class SSVLogStream(TextIOBase):
     """
     A StringIO pipe for sending log messages with a severity level.
     """
@@ -38,7 +37,7 @@ class SSVLogStream(io.StringIO):
 
 
 class SSVStreamHandler(logging.StreamHandler):
-    stream: Union[SSVLogStream, TextIO] = None
+    stream: Union[SSVLogStream, TextIO]
 
     def __init__(self, stream=None):
         super().__init__()
@@ -47,10 +46,11 @@ class SSVStreamHandler(logging.StreamHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         # Small modification of the build in StreamHandler to pass the log level to the stream
+        # noinspection PyBroadException
         try:
             msg = self.format(record)
             stream = self.stream
-            if issubclass(type(stream), SSVLogStream):
+            if isinstance(stream, SSVLogStream):
                 stream.write(msg + self.terminator, severity=record.levelno)
             else:
                 stream.write(msg + self.terminator)
@@ -65,7 +65,7 @@ def make_formatter(prefix="pySSV"):
     return SSVFormatter(f"[{prefix}] [%(levelname)s] [%(module)s] [%(funcName)s] %(message)s")
 
 
-def set_output_stream(stream: TextIO, level=logging.INFO, prefix="pySSV"):
+def set_output_stream(stream: TextIOBase, level=logging.INFO, prefix="pySSV"):
     handler = SSVStreamHandler(stream)
     handler.setFormatter(make_formatter(prefix))
     handler.setLevel(level)

@@ -1,47 +1,47 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
-import logging
-import sys
-from typing import Union
-
-import pcpp
 import argparse
+import sys
+from typing import Optional, List, Dict
+
+import pcpp  # type: ignore
 
 from .ssv_logging import log
 from .ssv_shader_args_tokenizer import SSVShaderArgsTokenizer
 
 
 class SSVTemplatePragmaData(argparse.Namespace):
-    command: str = None
+    command: str
     # Define/Arg
-    name: str = None
-    author: str = None
-    description: str = None
+    name: str
+    author: Optional[str] = None
+    description: Optional[str] = None
     # Stage
-    shader_stage: list[str] = None
+    shader_stage: Optional[List[str]] = None
     # Arg
     # name: str = None
     non_positional: bool = False
-    action: str = None
-    default: str = None
-    choices: list[str] = None
-    const: str = None
+    action: Optional[str] = None
+    default: Optional[str] = None
+    choices: Optional[List[str]] = None
+    const: Optional[str] = None
     # description: list[str] = None
     # input_primitive
-    primitive_type: str = None
+    primitive_type: Optional[str] = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
 
 class SSVShaderPragmaData(argparse.Namespace):
-    template: str = None
-    args: list[str] = None
+    template: str
+    args: List[str] = []
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
 
+# noinspection PyShadowingBuiltins
 class SSVTemplatePragmaParser(pcpp.Preprocessor):
     """
     This class is responsible for parsing #pragma definitions in SSV shader templates.
@@ -131,7 +131,7 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
 
         return True
 
-    def parse(self, input, source=None, ignore=None) -> dict[str, list[SSVTemplatePragmaData]]:
+    def parse(self, input, source=None, ignore=None) -> Dict[str, List[SSVTemplatePragmaData]]:
         """
         Parses the #pragma directives of a shader template.
 
@@ -156,7 +156,7 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
                 for args in self._pragma_args]
 
         # Group arguments into a dictionary
-        args_dict = {}
+        args_dict: Dict[str, List[SSVTemplatePragmaData]] = {}
         for arg in args:
             if arg.command in args_dict:
                 args_dict[arg.command].append(arg)

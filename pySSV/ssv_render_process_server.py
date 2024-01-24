@@ -1,25 +1,24 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import base64
+import enum
 import io
 import logging
-import sys
 import time
-from typing import Optional
 from io import BytesIO
-from multiprocessing import Process, Queue, current_process
-from threading import current_thread
+from multiprocessing import Queue, current_process
 from queue import Empty
-import enum
+from threading import current_thread
+from typing import Optional, Dict, Set
 
+import av  # type: ignore
 import numpy as np
 from PIL import Image
-import av
 
-from .ssv_render import SSVRender
-from .ssv_render_opengl import SSVRenderOpenGL
 from . import ssv_logging
 from .ssv_logging import log, SSVLogStream
+from .ssv_render import SSVRender
+from .ssv_render_opengl import SSVRenderOpenGL
 
 
 class SSVStreamingMode(enum.Enum):
@@ -78,7 +77,7 @@ class SSVRenderProcessServer:
         self.encode_quality: Optional[float] = None
         self.log_frame_timing = False
 
-        self._last_heartbeat_time = 0
+        self._last_heartbeat_time: float = 0
         self._frame_buffer_bytes = bytearray()
         # self._dbg_command_stats = {}
         self._video_stream: Optional[av.video.VideoStream] = None
@@ -93,7 +92,7 @@ class SSVRenderProcessServer:
         self.__init_video_encoder()
         self.__init_render_process(backend)
 
-    _supported_video_formats: set[str] = {
+    _supported_video_formats: Set[SSVStreamingMode] = {
         SSVStreamingMode.H264,
         SSVStreamingMode.HEVC,
         SSVStreamingMode.VP8,
@@ -103,7 +102,7 @@ class SSVRenderProcessServer:
     }
 
     # This dict stores the bit rate/quality factor that a stream quality of '100' should equal
-    _streaming_format_quality_scaling: dict[str, int] = {
+    _streaming_format_quality_scaling: Dict[SSVStreamingMode, int] = {
         SSVStreamingMode.JPG: 100,
         SSVStreamingMode.PNG: 7,
         SSVStreamingMode.VP8: 3500000,
@@ -121,8 +120,8 @@ class SSVRenderProcessServer:
         if self.stream_mode not in self._supported_video_formats:
             return
 
-        class FakeIO(io.RawIOBase):
-            name: str = "stream.mkv"
+        class FakeIO(io.RawIOBase):  # type: ignore
+            name: str = "stream.mkv"  # type: ignore
 
             def writable(self) -> bool:
                 return True
@@ -130,7 +129,7 @@ class SSVRenderProcessServer:
             def readable(self) -> bool:
                 return False
 
-            def write(self, __b: bytes) -> Optional[int]:
+            def write(self, __b: bytes) -> Optional[int]:  # type: ignore
                 # print(f"Writing: {len(__b)} bytes...")
                 return len(__b)
 
@@ -197,6 +196,7 @@ class SSVRenderProcessServer:
         else:
             self._renderer = None
             log(f"Backend '{backend}' does not exist!", logging.ERROR)
+            return
 
         self.__render_process_loop()
 
@@ -296,7 +296,7 @@ class SSVRenderProcessServer:
             # log(f"Render Process: Received command '{command}': {command_args}", severity=logging.INFO)
         except Empty:
             return True
-        except KeyboardInterrupt or ValueError:
+        except (KeyboardInterrupt, ValueError):
             log(f"Render process shutting down because client died unexpectedly.", severity=logging.INFO)
             return False
 
@@ -308,6 +308,9 @@ class SSVRenderProcessServer:
         #     self._dbg_command_stats[_command] += 1
         # else:
         #     self._dbg_command_stats[_command] = 1
+
+        if self._renderer is None:
+            return False
 
         if command is None:
             # Command is None if we time out before receiving a new command, this isn't an error in this case.
@@ -404,8 +407,10 @@ class SSVRenderProcessServer:
         """
         start_time = time.perf_counter()
         render_time = start_time
+
         if not self._renderer.render():
             self.running = False
+
         if self.stream_mode == SSVStreamingMode.PNG:
             if len(self._frame_buffer_bytes) == self.output_size[0]*self.output_size[1] * 4:
                 self._renderer.read_frame_into(self._frame_buffer_bytes)
@@ -486,9 +491,9 @@ class SSVRenderProcessServer:
 
         # img = Image.frombytes("RGB", self.output_size, frame)
         # av_frame = av.VideoFrame.from_image(img)
-        frame = np.array(frame, copy=False, dtype=np.uint8)
-        frame = frame.reshape((self.output_size[1], self.output_size[0], 3))
-        av_frame = av.VideoFrame.from_ndarray(frame, format="rgb24")
+        frame_np = np.array(frame, copy=False, dtype=np.uint8)
+        frame_np = frame_np.reshape((self.output_size[1], self.output_size[0], 3))
+        av_frame = av.VideoFrame.from_ndarray(frame_np, format="rgb24")
         packets = self._video_stream.encode(av_frame)
         if len(packets) == 1:
             return bytes(packets[0])
