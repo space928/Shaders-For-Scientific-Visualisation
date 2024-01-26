@@ -63,14 +63,16 @@ class SSVCanvas:
     An SSV canvas manages the OpenGL rendering context, shaders, and the jupyter widget
     """
 
-    def __init__(self, size: Optional[Tuple[int, int]], backend: str = "opengl", standalone: bool = False,
-                 target_framerate: int = 60, use_renderdoc: bool = False,
-                 supports_line_directives: Optional[bool] = None):
+    def __init__(self, size: Optional[Tuple[int, int]], backend: str = "opengl",
+                 gl_version: Optional[Tuple[int, int]] = None, standalone: bool = False, target_framerate: int = 60,
+                 use_renderdoc: bool = False, supports_line_directives: Optional[bool] = None):
         """
         Creates a new SSV Canvas object which manages the graphics context and render widget/window.
 
         :param size: the default resolution of the renderer as a tuple: ``(width: int, height: int)``.
         :param backend: the rendering backend to use; currently supports: ``"opengl"``.
+        :param gl_version: optionally, the minimum version of OpenGL to support. Accepts a tuple of (major, minor), eg:
+                       gl_version=(4, 2) for OpenGL 4.2 Core.
         :param standalone: whether the canvas should run standalone, or attempt to create a Jupyter Widget for
                            rendering.
         :param target_framerate: the default framerate to target when running.
@@ -116,15 +118,30 @@ class SSVCanvas:
             self._set_logging_stream()
             # set_output_stream(sys.stdout)
         self._render_timeout = 10
-        self._render_process_client = SSVRenderProcessClient(backend, None if standalone else self._render_timeout,
+        gl_version_int = None if gl_version is None else gl_version[0] * 100 + gl_version[1] * 10
+        self._render_process_client = SSVRenderProcessClient(backend, gl_version_int,
+                                                             None if standalone else self._render_timeout,
                                                              self._use_renderdoc)
+        # Configure and initialise the preprocessor
         if supports_line_directives is None:
             supported_extensions = self._render_process_client.get_supported_extensions()
             if supported_extensions is not None:
                 supports_line_directives = "GL_ARB_shading_language_include" in supported_extensions
             else:
                 supports_line_directives = False
-        self._preprocessor = SSVShaderPreprocessor(gl_version="420", supports_line_directives=supports_line_directives)
+        render_context_info = self._render_process_client.get_context_info()
+        shader_gl_version = "330"
+        if render_context_info is not None and "GL_VERSION" in render_context_info:
+            version = render_context_info["GL_VERSION"]
+            if len(version) >= 3:
+                try:
+                    major = int(version[0])
+                    minor = int(version[2])
+                    shader_gl_version = f"{major}{minor}0"
+                except ValueError:
+                    pass
+        self._preprocessor = SSVShaderPreprocessor(gl_version=shader_gl_version,
+                                                   supports_line_directives=supports_line_directives)
 
         self._supports_websockets = ENVIRONMENT != Env.COLAB or ENVIRONMENT != Env.JUPYTERLITE
         self._websocket_url: Optional[str] = None

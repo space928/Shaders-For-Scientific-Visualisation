@@ -35,13 +35,16 @@ def _jupyter_nbextension_paths():
 
 # Various factory methods
 
-def canvas(size: Optional[Tuple[int, int]] = (640, 480), backend: str = "opengl", standalone: bool = False,
-           target_framerate: int = 60, use_renderdoc: bool = False, supports_line_directives: Optional[bool] = None):
+def canvas(size: Optional[Tuple[int, int]] = (640, 480), backend: str = "opengl",
+           gl_version: Optional[Tuple[int, int]] = None, standalone: bool = False, target_framerate: int = 60,
+           use_renderdoc: bool = False, supports_line_directives: Optional[bool] = None):
     """
     Creates a new ``SSVCanvas`` which contains the render widget and manages the render context.
 
     :param size: the default resolution of the renderer as a tuple: ``(width: int, height: int)``.
     :param backend: the rendering backend to use; currently supports: ``"opengl"``.
+    :param gl_version: optionally, the minimum version of OpenGL to support. Accepts a tuple of (major, minor), eg:
+                       gl_version=(4, 2) for OpenGL 4.2 Core.
     :param standalone: whether the canvas should run standalone, or attempt to create a Jupyter Widget for
                        rendering.
     :param target_framerate: the default framerate to target when running.
@@ -53,4 +56,4 @@ def canvas(size: Optional[Tuple[int, int]] = (640, 480), backend: str = "opengl"
                                      ``False``.
     """
 
-    return SSVCanvas(size, backend, standalone, target_framerate, use_renderdoc, supports_line_directives)
+    return SSVCanvas(size, backend, gl_version, standalone, target_framerate, use_renderdoc, supports_line_directives)

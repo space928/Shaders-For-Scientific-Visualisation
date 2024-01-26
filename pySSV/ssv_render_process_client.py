@@ -30,11 +30,13 @@ class SSVRenderProcessClient:
     ``SSVRenderProcessServer``).
     """
 
-    def __init__(self, backend: str, timeout: Optional[float] = 1, use_renderdoc_api: bool = False):
+    def __init__(self, backend: str, gl_version: Optional[int] = None, timeout: Optional[float] = 1,
+                 use_renderdoc_api: bool = False):
         """
         Initialises a new Render Process Client and starts the render process.
 
         :param backend: the rendering backend to use.
+        :param gl_version: optionally, the minimum version of OpenGL to support.
         :param timeout: the render process watchdog timeout, set to None to disable.
         :param use_renderdoc_api: whether the renderdoc_api should be initialised.
         """
@@ -59,7 +61,7 @@ class SSVRenderProcessClient:
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
         self._render_process = Process(target=SSVRenderProcessServer, daemon=True,
                                        name=f"SSV Render Process - {id(self):#08x}",
-                                       args=(backend, self._command_queue_rx, self._command_queue_tx,
+                                       args=(backend, gl_version, self._command_queue_rx, self._command_queue_tx,
                                              ssv_logging.get_severity(), timeout, use_renderdoc_api))
         self._render_process.start()
         self._is_alive = True

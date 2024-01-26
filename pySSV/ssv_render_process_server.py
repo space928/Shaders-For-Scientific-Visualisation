@@ -60,8 +60,8 @@ class SSVRenderProcessServer:
     in a dedicated process by SSVRenderProcessClient.
     """
 
-    def __init__(self, backend: str, command_queue_tx: Queue, command_queue_rx: Queue, log_severity: int,
-                 timeout: Optional[float], use_renderdoc_api: bool = False):
+    def __init__(self, backend: str, gl_version: Optional[int], command_queue_tx: Queue,
+                 command_queue_rx: Queue, log_severity: int, timeout: Optional[float], use_renderdoc_api: bool = False):
         self._renderer: Optional[SSVRender] = None
         self._command_queue_tx: Queue = command_queue_tx
         self._command_queue_rx: Queue = command_queue_rx
@@ -91,7 +91,7 @@ class SSVRenderProcessServer:
         self.max_delta_time_encode = 1 / self.target_framerate
 
         self.__init_video_encoder()
-        self.__init_render_process(backend)
+        self.__init_render_process(backend, gl_version)
 
     _supported_video_formats: Set[SSVStreamingMode] = {
         SSVStreamingMode.H264,
@@ -186,14 +186,14 @@ class SSVRenderProcessServer:
         log_stream = SSVRenderProcessLogger(self._command_queue_tx)
         ssv_logging.set_output_stream(log_stream, level=log_severity, prefix="pySSV_Render")
 
-    def __init_render_process(self, backend: str):
+    def __init_render_process(self, backend: str, gl_version: Optional[int]):
         """
         Creates a new renderer for the given backend and starts the render process loop.
 
         :param backend: the render backend to use.
         """
         if backend == "opengl":
-            self._renderer = SSVRenderOpenGL(self._use_renderdoc_api)
+            self._renderer = SSVRenderOpenGL(gl_version, self._use_renderdoc_api)
         else:
             self._renderer = None
             log(f"Backend '{backend}' does not exist!", logging.ERROR)
