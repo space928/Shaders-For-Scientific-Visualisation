@@ -24,7 +24,13 @@ class SSVRender(ABC):
     """
 
     @abstractmethod
-    def __init__(self):
+    def __init__(self, gl_version: Optional[int] = None, use_renderdoc_api: bool = False):
+        """
+        Initialises a new renderer (and backing graphics context) with the given options.
+
+        :param gl_version: optionally, the minimum version of OpenGL to support.
+        :param use_renderdoc_api: whether the renderer should attempt to load the RenderDoc API.
+        """
         ...
 
     @abstractmethod

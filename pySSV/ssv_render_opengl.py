@@ -1,7 +1,9 @@
 #  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import logging
+import sys
 import time
+import os
 from typing import Optional, Any, Union, Tuple, Set, Dict, List, cast
 from dataclasses import dataclass
 
@@ -130,7 +132,7 @@ class SSVRenderOpenGL(SSVRender):
         dtype='f4',
     )
 
-    def __init__(self, use_renderdoc_api: bool = False):
+    def __init__(self, gl_version: Optional[int] = None, use_renderdoc_api: bool = False):
         self._render_buffers: Dict[int, SSVRenderBufferOpenGL] = {}
         self._ordered_render_buffers: List[SSVRenderBufferOpenGL] = []
         self._texture_objects: Dict[int, SSVTextureOpenGL] = {}
@@ -138,7 +140,7 @@ class SSVRenderOpenGL(SSVRender):
         self._renderdoc_is_capturing = False
         if use_renderdoc_api:
             self._renderdoc_api = load_render_doc()
-        self.__create_context()
+        self.__create_context(gl_version)
         self._start_time = time.time()
         self._frame_no = 0
 
@@ -147,18 +149,38 @@ class SSVRenderOpenGL(SSVRender):
         self._default_vertex_buffer = self.ctx.buffer(self._default_vertices)
         self._default_vertex_buffer_vertex_attributes = ("in_vert", "in_color")
 
-    def __create_context(self):
+    def __create_context(self, gl_version: Optional[int]):
         """
         Creates an OpenGL context and a framebuffer.
         """
+
+        # Hack for WSL
+        if "linux" in sys.platform:
+            # On WSL2, setting this environment variable allows us to specify a GPU preference:
+            # https://github.com/microsoft/wslg/wiki/GPU-selection-in-WSLg
+            # If the user hasn't already set it, then we set it to NVIDIA, just in case the user has an NVIDIA GPU,
+            # because they probably want to use that. While this doesn't help laptop users with dedicated AMD GPUs,
+            # the user can still set this env variable themselves.
+            if "MESA_D3D12_DEFAULT_ADAPTER_NAME" not in os.environ:
+                os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"] = "NVIDIA"
+
         if ENVIRONMENT == Env.COLAB:
             # TODO: Test if any other platforms require specific backends
             # In Google Colab we need to explicitly specify the EGL backend, otherwise it tries (and fails) to use X11
             # noinspection PyTypeChecker
-            self.ctx = moderngl.create_context(standalone=True, backend="egl")
+            self.ctx = moderngl.create_context(standalone=True, backend="egl")  # type: ignore
         else:
             # Otherwise let ModernGL try to automatically determine the correct backend
-            self.ctx = moderngl.create_context(standalone=True)
+            if gl_version is None:
+                # noinspection PyBroadException
+                try:
+                    # Try to load OpenGL 4.2 by default
+                    self.ctx = moderngl.create_context(standalone=True, require=420)
+                except Exception:
+                    # If unavailable, try any other version that might be available on the system
+                    self.ctx = moderngl.create_context(standalone=True)
+            else:
+                self.ctx = moderngl.create_context(standalone=True, require=gl_version)
 
         # To use moderngl with threading we need call the garbage collector manually
         # self.ctx.gc_mode = "context_gc"
@@ -169,9 +191,9 @@ class SSVRenderOpenGL(SSVRender):
         self.ctx.depth_func = "<="
         self.ctx.enable(moderngl.BLEND)
         # A bit of a weird blending function, but it plays 'nice' with the GUI...
-        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,
+        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,  # type: ignore
                                moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
-        self.ctx.blend_equation = moderngl.FUNC_ADD  # , moderngl.MAX
+        self.ctx.blend_equation = moderngl.FUNC_ADD, moderngl.FUNC_ADD
 
     def log_context_info(self, full=False):
         """
@@ -211,11 +233,12 @@ class SSVRenderOpenGL(SSVRender):
         if frame_buffer_uid in self._render_buffers:
             render_buffer = self._render_buffers[frame_buffer_uid]
             render_buffer.frame_buffer = fb
-            render_buffer.render_texture = fb.color_attachments[0]
+            render_buffer.render_texture = cast(moderngl.Texture, fb.color_attachments[0])
             render_buffer.uniform_name = uniform_name
         else:
-            self._render_buffers[frame_buffer_uid] = SSVRenderBufferOpenGL(order, self.ctx.gc_mode is None, fb,
-                                                                           fb.color_attachments[0], {}, uniform_name)
+            self._render_buffers[frame_buffer_uid] = SSVRenderBufferOpenGL(
+                order, self.ctx.gc_mode is None, fb, cast(moderngl.Texture, fb.color_attachments[0]), {}, uniform_name
+            )
 
         # Update the resolution uniform in this buffer
         self.update_uniform(frame_buffer_uid, None, "uResolution", (*resolution, 0, 0))
@@ -398,6 +421,7 @@ class SSVRenderOpenGL(SSVRender):
                 log(f"Couldn't create texture, uniform_name must not be None", severity=logging.ERROR)
                 return
             try:
+                texture: Union[moderngl.Texture, moderngl.Texture3D]
                 if depth > 1:
                     texture = self.ctx.texture3d((depth, height, width), components, data, dtype=dtype)
                 else:
@@ -410,11 +434,17 @@ class SSVRenderOpenGL(SSVRender):
             # Update an existing texture
             # We don't call determine_texture_shape() as we assume shape matches our current texture shape, but just in
             # case we try except the texture write in case the shape is grossly wrong.
-            texture = self._texture_objects[texture_uid]
+            ssv_texture = self._texture_objects[texture_uid]
             if uniform_name is not None:
-                texture.uniform_name = uniform_name
+                ssv_texture.uniform_name = uniform_name
             try:
-                texture.texture.write(data, rect)
+                if rect is not None:
+                    if isinstance(ssv_texture.texture, moderngl.Texture):
+                        assert len(rect) == 4
+                    else:
+                        assert len(rect) == 6
+                # The type constraint is validated just above, but mypy doesn't recognise it...
+                ssv_texture.texture.write(data, rect)  # type: ignore
             except Exception as e:
                 log(f"Couldn't update texture: \n{e}", severity=logging.ERROR)
                 return
