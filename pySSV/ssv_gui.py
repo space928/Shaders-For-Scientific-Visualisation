@@ -290,6 +290,7 @@ class SSVGUI:
         font_tex = self.canvas.texture(self._font.bitmap, "uFontTex")
         font_tex.linear_filtering = True  # type: ignore
         font_tex.linear_mipmap_filtering = True  # type: ignore
+        self.canvas.preprocessor.global_defines["_USING_GUI"] = "1"
         self._set_logging_stream = False
         self._last_mouse_down = False
         self.canvas.on_start(lambda: self._update_gui())
@@ -319,13 +320,23 @@ class SSVGUI:
         self._layout_groups[0].draw(self, Rect(0, 0, self._resolution[0], self._resolution[1]))
 
         # Update all the vertex buffers using the cached arrays
+        filter_cache = False
         for k, v in self._vb_cache.items():
-            v.vertex_buff.update_vertex_buffer(v.v_array[:v.used_space], SSVGUIShaderMode.get_vertex_attributes(k))
-            # If the cache array has got much larger than the amount of used space, then trim it
-            if v.v_array.shape[0] > v.used_space * 2:
-                # log(f"Trimming v_array for type={SSVGUIShaderMode(k).name} "
-                #     f"usage={v.used_space}/{v.v_array.shape[0]}...", severity=logging.INFO)
-                v.v_array = v.v_array[:v.used_space]
+            if v.used_space == 0:
+                # Destroy this vertex buffer, we can't render empty vertex buffers
+                v.vertex_buff.release()
+                filter_cache = True
+            else:
+                v.vertex_buff.update_vertex_buffer(v.v_array[:v.used_space], SSVGUIShaderMode.get_vertex_attributes(k))
+                # If the cache array has got much larger than the amount of used space, then trim it
+                if v.v_array.shape[0] > v.used_space * 2:
+                    # log(f"Trimming v_array for type={SSVGUIShaderMode(k).name} "
+                    #     f"usage={v.used_space}/{v.v_array.shape[0]}...", severity=logging.INFO)
+                    v.v_array = v.v_array[:v.used_space]
+
+        # Filter out any destroyed vertex buffers
+        if filter_cache:
+            self._vb_cache = {k: v for k, v in self._vb_cache.items() if v.vertex_buff.is_valid}
 
         self._last_mouse_down = self.canvas.mouse_down[0]
         self._on_post_gui_callback(self)
@@ -340,6 +351,9 @@ class SSVGUI:
         :param requested_space: how many array items of space
         :return: a slice of a vertex array to write into; all the requested space should be filled.
         """
+        if requested_space == 0:
+            return np.empty(0, dtype=np.float32)
+
         if render_type in self._vb_cache:
             cached = self._vb_cache[render_type]
             # Expand the cached array if needed
@@ -435,9 +449,11 @@ class SSVGUI:
             if release:
                 self._capturing_control_ind = -1
                 self.canvas.update_uniform("uSSVGUI_isCapturingMouse", 0)
+                self.canvas.main_camera.inhibit = False
             else:
                 self._capturing_control_ind = self._control_ind
                 self.canvas.update_uniform("uSSVGUI_isCapturingMouse", 1)
+                self.canvas.main_camera.inhibit = True
 
     def on_gui(self, callback: Callable[["SSVGUI"], None], remove: bool = False):
         """
@@ -843,7 +859,7 @@ class SSVGUI:
     def label_3d(self, text: str, pos: Tuple[float, float, float],
                  colour: Colour = ssv_colour.ui_text, font_size: Optional[float] = None,
                  weight: float = 0.5, italic: bool = False, shadow: bool = False,
-                 align: TextAlign = TextAlign.LEFT, enforce_hinting: bool = True):
+                 align: TextAlign = TextAlign.CENTER, enforce_hinting: bool = True):
         """
         Creates a label GUI element which is transformed in 3d space using the canvas's camera.
 
@@ -871,12 +887,15 @@ class SSVGUI:
                 render_mode |= SSVGUIShaderMode.SHADOWED
 
             # TODO: The camera view/projection matrix should be cached to avoid calculating it so often...
-            pos_clip = gui.canvas.main_camera.view_matrix @ gui.canvas.main_camera.projection_matrix @ pos
+            # pos_clip = gui.canvas.main_camera.projection_matrix @ gui.canvas.main_camera.view_matrix @ (*pos, 1.)
+            pos_clip = (*pos, 1.) @ gui.canvas.main_camera.view_matrix @ gui.canvas.main_camera.projection_matrix
+            pos_clip[0] /= pos_clip[2]
+            pos_clip[1] /= pos_clip[2]
             # Clipping planes
             if 0 > pos_clip[2] > 1:
                 return
             screen_x = float((pos_clip[0]*0.5+0.5) * gui._resolution[0])
-            screen_y = float((pos_clip[1]*0.5+0.5) * gui._resolution[1])
+            screen_y = float(((-pos_clip[1])*0.5+0.5) * gui._resolution[1])
 
             # Font sizing & positioning
             _font_size = (font_size if font_size is not None else self._font.size)
@@ -894,7 +913,7 @@ class SSVGUI:
 
             # Centre on the y-axis, there's some janky tuning in here to make it behave
             diff_y = self._font.base_height * scale
-            draw_y = screen_y + diff_y
+            draw_y = screen_y - diff_y
             font_width, font_height = self._font.width, self._font.height
 
             # Align on the x-axis
@@ -914,12 +933,15 @@ class SSVGUI:
             for i, c in enumerate(char_defs):
                 if trim_x > gui._resolution[0]:
                     # This char (and consequently all subsequent chars) is entirely off the right edge of the screen
-                    char_defs = char_defs[i_0:i]
+                    char_defs = char_defs[:i]
                     break
                 trim_x += c.x_advance * scale
                 if trim_x < 0:
                     # This char is entirely off the left edge of the screen
                     i_0 = i
+            char_defs = char_defs[i_0:]
+            if len(char_defs) == 0:
+                return
 
             # Now create the actual geometry for the text
             gui._draw_chars(char_defs, (draw_x, draw_y), (font_width, font_height), colour, scale,
@@ -1244,7 +1266,7 @@ def create_gui(canvas: SSVCanvas) -> SSVGUI:
     # vb.update_vertex_buffer()
     # Now render our GUI on top of the main render buffer
     vb.shader(f"""
-    #pragma SSV pixel mainImage
+    #pragma SSV pixel mainImage --z_value 0.01
     vec4 mainImage(in vec2 fragCoord)
     {{
         vec2 uv = fragCoord/uResolution.xy;

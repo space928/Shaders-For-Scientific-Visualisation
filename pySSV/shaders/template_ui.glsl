@@ -37,7 +37,7 @@ layout(location = 3) out flat vec3 v_size;
 #endif // T_SUPPORT_ROUNDING
 
 void main() {
-    gl_Position = vec4((in_vert/uResolution.xy)*2.-1., 0.0, 1.0);
+    gl_Position = vec4((in_vert/uResolution.xy)*2.-1., -0.9, 1.0);
     gl_Position.y = -gl_Position.y;
     v_color = in_color;
     #ifdef T_SUPPORT_TEXT

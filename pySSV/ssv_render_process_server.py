@@ -319,16 +319,18 @@ class SSVRenderProcessServer:
         elif command == "Stop":
             return False
         elif command == "HrtB":
+            # Heartbeat
             self._last_heartbeat_time = time.monotonic()
         elif command == "SWdg":
+            # Set Watchdog time
             self.watchdog_time = command_args[0]
         elif command == "UFBO":
-            # New/Update frame buffer
+            # New/Update Frame Buffer
             self._renderer.update_frame_buffer(*command_args)
             if command_args[0] == 0:
                 self.output_size = command_args[2]
         elif command == "DFBO":
-            # Delete frame buffer
+            # Delete Frame Buffer
             self._renderer.delete_frame_buffer(command_args[0])
         elif command == "Rndr":
             # A render command needs to count as the first heartbeat so that the watchdog doesn't kill us immediately
@@ -340,25 +342,28 @@ class SSVRenderProcessServer:
             self.__init_video_encoder()
             self.running = self.target_framerate != 0
         elif command == "UpdU":
-            # Update uniform
+            # Update Uniform
             self._renderer.update_uniform(*command_args)
         elif command == "UpdV":
-            # Update vertex buffer
+            # Update Vertex buffer
             self._renderer.update_vertex_buffer(*command_args)
+        elif command == "DelV":
+            # Delete Vertex buffer
+            self._renderer.delete_vertex_buffer(*command_args)
         elif command == "UpdT":
-            # Update texture
+            # Update Texture
             self._renderer.update_texture(*command_args)
         elif command == "UpdS":
-            # Update texture sampler
+            # Update texture Sampler
             self._renderer.update_texture_sampler(*command_args)
         elif command == "DelT":
-            # Delete texture
+            # Delete Texture
             self._renderer.delete_texture(*command_args)
         elif command == "RegS":
-            # Register shader
+            # Register Shader
             self._renderer.register_shader(*command_args)
         elif command == "RdCp":
-            # Renderdoc capture frame
+            # Renderdoc Capture frame
             self._renderer.renderdoc_capture_frame(*command_args)
         elif command == "LogC":
             # Log Context Info
@@ -378,7 +383,7 @@ class SSVRenderProcessServer:
             self.max_delta_time = 0
             self.max_delta_time_encode = 0
         elif command == "GtEx":
-            # Get supported extensions
+            # Get supported Extensions
             ext = self._renderer.get_supported_extensions()
             self.__send_async_result(command_args[0], ext)
         elif command == "DbRT":

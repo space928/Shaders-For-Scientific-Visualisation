@@ -1,4 +1,4 @@
-//  Copyright (c) 2023 Thomas Mathieson.
+//  Copyright (c) 2024 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
 #pragma SSVTemplate define full_screen_colour --author "Thomas Mathieson" \
         --description "A simple full screen pixel shader which fills the screen with a solid colour."
@@ -15,7 +15,7 @@ layout(location = 0) in vec2 in_vert;
 layout(location = 1) in vec3 in_color;
 layout(location = 0) out vec3 color;
 void main() {
-    gl_Position = vec4(in_vert, 0.0, 1.0);
+    gl_Position = vec4(in_vert, 0.999, 1.0);
     color = in_color;
 }
 #endif //SHADER_STAGE_VERTEX

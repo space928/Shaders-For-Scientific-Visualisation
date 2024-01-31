@@ -1,7 +1,7 @@
 #  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional, Any
+from typing import TYPE_CHECKING, Optional, Any, Dict, Tuple
 
 from .ssv_vertex_buffer import SSVVertexBuffer
 
@@ -46,6 +46,7 @@ class SSVRenderBuffer:
         self._size = size
         self._components = components
         self._dtype = dtype
+        self._vertex_buffers: Dict[int, SSVVertexBuffer] = {}
 
         # Register this frame buffer
         render_process_client.update_frame_buffer(self._render_buffer_uid, order, size, render_buffer_name,
@@ -56,6 +57,7 @@ class SSVRenderBuffer:
         # Create a default full screen draw call for this render buffer
         self._full_screen_vertex_buffer = SSVVertexBuffer(0, self, self._render_process_client,
                                                           self._preprocessor)
+        self._vertex_buffers[self._full_screen_vertex_buffer.draw_call_uid] = self._full_screen_vertex_buffer
 
     def _update_frame_buffer(self):
         self._render_process_client.update_frame_buffer(self._render_buffer_uid, self._order, self._size,
@@ -139,6 +141,11 @@ class SSVRenderBuffer:
         self._dtype = value
         self._update_frame_buffer()
 
+    @property
+    def vertex_buffers(self) -> Tuple[SSVVertexBuffer, ...]:
+        """Gets the tuple of vertex buffers registered to this render buffer."""
+        return tuple(v for v in self._vertex_buffers.values())
+
     def shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
                additional_templates: Optional[list[str]] = None,
                shader_defines: Optional[dict[str, str]] = None,
@@ -162,7 +169,7 @@ class SSVRenderBuffer:
         self._full_screen_vertex_buffer.shader(shader_source, additional_template_directory, additional_templates,
                                                shader_defines, compiler_extensions)
 
-    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = False,
+    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = True,
                        share_with_canvas: bool = False) -> None:
         """
         Sets the value of a uniform associated with this buffer's full-screen shader.
@@ -180,4 +187,15 @@ class SSVRenderBuffer:
 
         :return: A new vertex buffer object.
         """
-        return SSVVertexBuffer(None, self, self._render_process_client, self._preprocessor)
+        vb = SSVVertexBuffer(None, self, self._render_process_client, self._preprocessor)
+        self._vertex_buffers[vb.draw_call_uid] = vb
+        return vb
+
+    def delete_vertex_buffer(self, buffer: SSVVertexBuffer):
+        """
+        Removes a vertex buffer from this render buffer, releasing its resources.
+
+        :param buffer: the vertex buffer to remove.
+        """
+        buff = self._vertex_buffers.pop(buffer.draw_call_uid)
+        buff.release()

@@ -124,6 +124,8 @@ class SSVCameraController(SSVCamera, ABC):
     """The zooming speed of the camera."""
     pan_speed: float
     """The panning speed of the camera in radians per pixel of mouse movement."""
+    inhibit: bool = False
+    """Whether the camera controls should be inhibited"""
 
     def __init__(self):
         super().__init__()
@@ -151,6 +153,8 @@ class SSVLookCameraController(SSVCameraController):
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
+        if self.inhibit:
+            return
         if mouse_down[0]:
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
@@ -173,6 +177,8 @@ class SSVLookCameraController(SSVCameraController):
         :param direction: the direction to move in.
         :param distance: the distance to move.
         """
+        if self.inhibit:
+            return
         if direction == MoveDir.UP:
             self.position[1] += self.move_speed * distance
         elif direction == MoveDir.DOWN:
@@ -234,6 +240,8 @@ class SSVOrbitCameraController(SSVCameraController):
         :param mouse_pos: the new mouse position.
         :param mouse_down: whether the mouse button is pressed.
         """
+        if self.inhibit:
+            return
         if mouse_down[0] or mouse_down[1] or mouse_down[2]:
             if not self._mouse_was_pressed:
                 self._mouse_was_pressed = True
@@ -272,6 +280,8 @@ class SSVOrbitCameraController(SSVCameraController):
 
         :param distance: how far to zoom in.
         """
+        if self.inhibit:
+            return
         self.orbit_dist += self.orbit_dist * distance * self.zoom_speed
         self._update_direction_position()
 
@@ -283,6 +293,8 @@ class SSVOrbitCameraController(SSVCameraController):
         :param direction: the direction to move in.
         :param distance: the distance to move.
         """
+        if self.inhibit:
+            return
         dir_vec: npt.NDArray[np.float32] = np.zeros(4, dtype=np.float32)
         if direction == MoveDir.UP:
             dir_vec[1] = self.move_speed * distance

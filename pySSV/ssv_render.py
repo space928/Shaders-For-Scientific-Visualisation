@@ -145,6 +145,16 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
+    def delete_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int):
+        """
+        Deletes an existing vertex buffer.
+
+        :param frame_buffer_uid: the uid of the framebuffer of the vertex buffer to delete.
+        :param draw_call_uid: the uid of the draw call of the vertex buffer to delete.
+        """
+        ...
+
+    @abstractmethod
     def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
