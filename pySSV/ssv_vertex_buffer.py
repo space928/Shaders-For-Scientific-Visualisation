@@ -1,8 +1,11 @@
-#  Copyright (c) 2023 Thomas Mathieson.
+#  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Any
 import numpy.typing as npt
+import logging
+
+from .ssv_logging import log
 
 if TYPE_CHECKING:
     from .ssv_render_process_client import SSVRenderProcessClient
@@ -24,21 +27,40 @@ class SSVVertexBuffer:
         Note that ``SSVVertexBuffer`` objects should be constructed using the factory method on either an ``SSVCanvas``
         or an ``SSVRenderBuffer``.
         """
-        self._draw_call_uid = id(self) if draw_call_uid is None else draw_call_uid
+        self._draw_call_uid: int = id(self) if draw_call_uid is None else draw_call_uid
         self._render_buffer = render_buffer
         self._render_process_client = render_process_client
         self._preprocessor = preprocessor
+        self._is_valid = True
 
         # Create a default vertex buffer when initialised
         self._render_process_client.update_vertex_buffer(self._render_buffer.render_buffer_uid, self._draw_call_uid,
                                                          None, None, None)
 
     @property
-    def draw_call_uid(self):
+    def draw_call_uid(self) -> int:
         """
         Gets the internal uid of this draw call.
         """
         return self._draw_call_uid
+
+    @property
+    def is_valid(self) -> bool:
+        return self._is_valid
+
+    def __del__(self):
+        self.release()
+
+    def release(self):
+        """
+        Destroys this vertex buffer.
+        """
+        if not self._is_valid:
+            return
+            # raise Exception(f"Attempted to delete a vertex buffer which has already been destroyed!")
+        self._is_valid = False
+        self._render_buffer.delete_vertex_buffer(self)
+        self._render_process_client.delete_vertex_buffer(self._render_buffer.render_buffer_uid, self._draw_call_uid)
 
     def update_vertex_buffer(self, vertex_array: npt.NDArray,
                              vertex_attributes: tuple[str, ...] = ("in_vert", "in_color"),
@@ -51,6 +73,15 @@ class SSVVertexBuffer:
         :param vertex_attributes: a tuple of the names of the vertex attributes to map to in the shader, in the order
                                   that they appear in the vertex array.
         """
+        if not self._is_valid:
+            raise Exception(f"Attempted to update a vertex buffer which has already been destroyed!")
+        if vertex_array.shape[0] == 0:
+            log(f"Vertex array can't be empty!", severity=logging.ERROR)
+            return
+        if index_array is not None and index_array.shape[0] == 0:
+            log(f"Index array can't be empty! Pass None if you don't want to use an index array.",
+                severity=logging.ERROR)
+            return
         self._render_process_client.update_vertex_buffer(self._render_buffer.render_buffer_uid, self._draw_call_uid,
                                                          vertex_array, index_array, vertex_attributes)
 
@@ -74,6 +105,8 @@ class SSVVertexBuffer:
         :param compiler_extensions: a list of GLSL extensions required by this shader
                                     (eg: ``GL_EXT_control_flow_attributes``)
         """
+        if not self._is_valid:
+            raise Exception(f"Attempted to register a shader to a vertex buffer which has already been destroyed!")
         shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
                                                 additional_templates, shader_defines, compiler_extensions)
         self._render_process_client.register_shader(self._render_buffer.render_buffer_uid, self._draw_call_uid,
@@ -89,6 +122,8 @@ class SSVVertexBuffer:
         :param share_with_render_buffer: update this uniform across all shaders in this render buffer.
         :param share_with_canvas: update this uniform across all shaders in this canvas.
         """
+        if not self._is_valid:
+            raise Exception(f"Attempted to update a uniform on a vertex buffer which has already been destroyed!")
         self._render_process_client.update_uniform(None if share_with_canvas else self._render_buffer.render_buffer_uid,
                                                    None if share_with_render_buffer else self._draw_call_uid,
                                                    uniform_name, value)

@@ -1,10 +1,12 @@
-//  Copyright (c) 2023 Thomas Mathieson.
+//  Copyright (c) 2024 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
 #pragma SSVTemplate define sdf --author "Thomas Mathieson" \
         --description "A shader template which allows you to render custom signed distance functions."
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage fragment
 #pragma SSVTemplate arg entrypoint -d "The name of the sdf function in the shader."
+#pragma SSVTemplate arg _camera_mode --choices INTERACTIVE AUTO --default AUTO \
+        -d "How the camera should behave. INTERACTIVE, uses the canvas' camera. AUTO, automatically rotates around the scene using the --camera_distance and --rotate_speed variables."
 #pragma SSVTemplate arg _camera_distance --default 10.0 -d "The distance of the camera from the centre of the distance field."
 #pragma SSVTemplate arg _rotate_speed --default 0.1 -d "The orbit speed of the camera around the SDF, in radians/second."
 #pragma SSVTemplate arg _raymarch_steps --default 128 \
@@ -124,8 +126,13 @@ void main() {
     // Fix any aspect ratio distortion
     uv.x *= uResolution.x / uResolution.y;
 
+    #if T_CAMERA_MODE == AUTO
     vec3 r = normalize(vec3(uv, 2.0))*_rotY(uTime*T_ROTATE_SPEED);
     vec3 o = vec3(0., 0., -T_CAMERA_DISTANCE)*_rotY(uTime*T_ROTATE_SPEED);
+    #elif T_CAMERA_MODE == INTERACTIVE
+    vec3 r = normalize((vec4(uv, 1., 0.) * uViewMat).xyz);
+    vec3 o = (vec4(uViewMat[3].xyz, 0.) * uViewMat).xyz;
+    #endif //T_CAMERA_MODE
     float t = _trace(o, r);
     vec3 p = o + r * t;
     vec3 nrm = _estimateNormal(p);

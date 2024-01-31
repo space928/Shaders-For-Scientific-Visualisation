@@ -250,6 +250,15 @@ class SSVRenderProcessClient:
         self._command_queue_tx.put(("UpdV", frame_buffer_uid, draw_call_uid, vertex_array, index_array,
                                     vertex_attributes))
 
+    def delete_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int):
+        """
+        Deletes an existing vertex buffer.
+
+        :param frame_buffer_uid: the uid of the framebuffer of the vertex buffer to delete.
+        :param draw_call_uid: the uid of the draw call of the vertex buffer to delete.
+        """
+        self._command_queue_tx.put(("DelV", frame_buffer_uid, draw_call_uid))
+
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
                        rect: Optional[Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]],

@@ -332,6 +332,11 @@ class SSVCanvas:
         """Gets the current mouse position relative to the canvas in pixels."""
         return self._mouse_pos
 
+    @property
+    def preprocessor(self):
+        """Gets this canvas' preprocessor instance. Useful if you need to manually add compiler defines/macros."""
+        return self._preprocessor
+
     def _set_logging_stream(self):
         """
         Sets the logger output to this SSVCanvas' widget if it exists.
@@ -477,8 +482,8 @@ class SSVCanvas:
         self._main_render_buffer.shader(shader_source, additional_template_directory, additional_templates,
                                         shader_defines, compiler_extensions)
 
-    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = False,
-                       share_with_canvas: bool = False) -> None:
+    def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = True,
+                       share_with_canvas: bool = True) -> None:
         """
         Sets the value of a uniform associated with the main full-screen shader.
 

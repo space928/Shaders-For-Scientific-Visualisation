@@ -66,11 +66,11 @@ class SSVDrawCall:
         self.shader_program = None
         self.primitive_type = int(moderngl.TRIANGLES)
 
-    def release(self, needs_gc: bool):
+    def release(self, needs_gc: bool, release_vb: bool = True):
         if needs_gc:
             if self.gl_vertex_array is not None:
                 self.gl_vertex_array.release()
-            if self.vertex_buffer is not None:
+            if self.vertex_buffer is not None and release_vb:
                 self.vertex_buffer.release()
             if self.index_buffer is not None:
                 self.index_buffer.release()
@@ -317,7 +317,7 @@ class SSVRenderOpenGL(SSVRender):
                     and draw_call.vertex_buffer.size == len(vertex_array) * vertex_array.dtype.itemsize):
                 draw_call.vertex_buffer.write(vertex_array)
             else:
-                if draw_call.vertex_buffer is not None:
+                if draw_call.vertex_buffer is not None and draw_call.vertex_buffer is not self._default_vertex_buffer:
                     draw_call.vertex_buffer.release()
                 draw_call.vertex_buffer = (self._default_vertex_buffer if vertex_array is None else
                                            self.ctx.buffer(vertex_array))
@@ -344,6 +344,19 @@ class SSVRenderOpenGL(SSVRender):
         except KeyError as e:
             log(f"Couldn't find required vertex attribute '{e.args[0]}' in shader!", severity=logging.ERROR)
             return
+
+    def delete_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int):
+        if frame_buffer_uid not in self._render_buffers:
+            log(f"Can't delete vertex buffer from non existant frame buffer fb_uid={frame_buffer_uid}!",
+                severity=logging.ERROR)
+            return
+        if draw_call_uid not in self._render_buffers[frame_buffer_uid].draw_calls:
+            log(f"Can't delete non existant vertex buffer fb_uid={frame_buffer_uid} vb_uid={draw_call_uid}!",
+                severity=logging.ERROR)
+            return
+        rb = self._render_buffers[frame_buffer_uid]
+        draw_call = rb.draw_calls.pop(draw_call_uid)
+        draw_call.release(rb.needs_gc, release_vb=draw_call.vertex_buffer != self._default_vertex_buffer)
 
     def register_shader(self, frame_buffer_uid: int, draw_call_uid: int,
                         vertex_shader: str, fragment_shader: Optional[str],
@@ -381,13 +394,15 @@ class SSVRenderOpenGL(SSVRender):
                                  tess_evaluation_shader=tess_evaluation_shader))
 
             draw_call.primitive_type = cast(int, moderngl.TRIANGLES if primitive_type is None
-            else PRIMITIVE_TYPES[primitive_type])
+                                            else PRIMITIVE_TYPES[primitive_type])
 
             # Creating a new shader program invalidates any previously bound vertex arrays, so we need to recreate it.
             # Annoyingly, to support the "default" case where the user doesn't call update_vertex_buffer() we need to
             # create this vertex array no matter what; even if the user subsequently calls update_vertex_buffer which
             # would replace this vertex array.
             try:
+                # log(f"Registering shader! fb_uid={frame_buffer_uid}; dc_uid={draw_call_uid}. "
+                #     f"vb={draw_call.vertex_buffer}", severity=logging.INFO)
                 draw_call.gl_vertex_array = self.ctx.vertex_array(draw_call.shader_program, draw_call.vertex_buffer,
                                                                   *draw_call.vertex_attributes,
                                                                   index_buffer=draw_call.index_buffer)
@@ -397,7 +412,8 @@ class SSVRenderOpenGL(SSVRender):
                     f"compiler may have optimised it out.", severity=logging.ERROR)
                 return
         except moderngl.Error as e:
-            log(e, severity=logging.ERROR)
+            log(f"Error while registering shader! fb_uid={frame_buffer_uid}; dc_uid={draw_call_uid}. "
+                f"Exception details:\n{e}", severity=logging.ERROR)
 
         # Set the resolution uniform as soon as the program is created
         fb = self._render_buffers[frame_buffer_uid].frame_buffer
@@ -476,11 +492,11 @@ class SSVRenderOpenGL(SSVRender):
                           or old_filter[0] == moderngl.NEAREST_MIPMAP_LINEAR)
                 if linear_filtering:
                     texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if mipmap
-                                      else moderngl.LINEAR_MIPMAP_NEAREST),
+                                           else moderngl.LINEAR_MIPMAP_NEAREST),
                                       cast(int, moderngl.LINEAR))
                 else:
                     texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if mipmap
-                                      else moderngl.NEAREST_MIPMAP_NEAREST),
+                                           else moderngl.NEAREST_MIPMAP_NEAREST),
                                       cast(int, moderngl.NEAREST))
             else:
                 # Texture doesn't use mipmaps
@@ -495,11 +511,11 @@ class SSVRenderOpenGL(SSVRender):
                 linear = texture.filter[1] == cast(int, moderngl.LINEAR)
                 if linear:
                     texture.filter = (cast(int, moderngl.LINEAR_MIPMAP_LINEAR if linear_mipmap_filtering else
-                                      moderngl.LINEAR_MIPMAP_NEAREST),
+                                           moderngl.LINEAR_MIPMAP_NEAREST),
                                       cast(int, moderngl.LINEAR))
                 else:
                     texture.filter = (cast(int, moderngl.NEAREST_MIPMAP_LINEAR if linear_mipmap_filtering else
-                                      moderngl.NEAREST_MIPMAP_NEAREST),
+                                           moderngl.NEAREST_MIPMAP_NEAREST),
                                       cast(int, moderngl.NEAREST))
 
         if anisotropy is not None:

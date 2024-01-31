@@ -27,8 +27,18 @@ class SSVShaderPreprocessor:
         self._gl_version = gl_version
         self._supports_line_directives = supports_line_directives
         self._dynamic_uniforms: Dict[str, str] = {}
+        self._global_defines: Dict[str, str] = {}
         self._template_parser = SSVTemplatePragmaParser()
         self._shader_parser = SSVShaderPragmaParser()
+
+    @property
+    def global_defines(self) -> Dict[str, str]:
+        """
+        Gets the (mutable) dictionary of compiler macros which are defined globally in all shaders. This does not
+        include any macros defined by the ``SSVShaderPreprocessor`` itself. The dict contains key-value pairs where
+        the key is the macro name and the value is the macro definition (as a C preprocessor macro).
+        """
+        return self._global_defines
 
     @staticmethod
     def _make_argparse(template_metadata: Dict[str, List[SSVTemplatePragmaData]]) -> argparse.ArgumentParser:
@@ -84,7 +94,7 @@ class SSVShaderPreprocessor:
 
         return parser
 
-    def _make_defines(self, template_args: argparse.Namespace, template_argparse: argparse.ArgumentParser,
+    def _make_defines(self, template_args: argparse.Namespace, template_argparse: List[SSVTemplatePragmaData],
                       extra_defines: Optional[Dict[str, str]],
                       compiler_extensions: Optional[List[str]]) -> List[Tuple[str, str]]:
         """
@@ -96,13 +106,17 @@ class SSVShaderPreprocessor:
             (_foo='False') -> <nothing>
 
         :param template_args: an argparse Namespace object.
-        :param template_argparse: the argparse instance used to parse the arguments.
+        :param template_argparse: the list of SSVTemplateMetaData containing the argument definitions.
         :param extra_defines: extra preprocessor defines to be enabled globally.
         :param compiler_extensions: a list of GLSL extensions required by this shader
                                     (eg: ``GL_EXT_control_flow_attributes``)
         :return: a list of tuples of shader defines.
         """
         defines = []
+        arg_templates: Dict[str, SSVTemplatePragmaData] = {
+            arg.name[1:] if len(arg.name) > 1 and arg.name[0] == '_' else arg.name: arg for arg in template_argparse
+        }
+        global_choices: Dict[str, str] = {}
         for arg, val in template_args.__dict__.items():
             if issubclass(type(val), list):
                 # Hack to support arguments containing spaces
@@ -120,10 +134,19 @@ class SSVShaderPreprocessor:
                 continue
             if val.lower() == "true":
                 val = "1"
+            # Support choices as an enum
+            arg_choices = arg_templates[arg].choices
+            if arg_choices is not None:
+                # Add the choices to the defines
+                for c in arg_choices:
+                    if c not in global_choices:
+                        global_choices[c] = str(len(global_choices))
+                        defines.append((c, global_choices[c]))
+                val = global_choices[val]
 
             name = f"T_{(arg[1:] if arg[0] == '_' else arg).upper()}"
             defines.append((name, val))
-            if template_argparse.get_default(arg) == val:
+            if arg_templates[arg].default == val:
                 defines.append((f"{name}_ISDEFAULT", "1"))
 
         defines.append(("SSV_SHADER", "1"))
@@ -134,6 +157,8 @@ class SSVShaderPreprocessor:
         if extra_defines is not None and len(extra_defines) > 0:
             for define, value in extra_defines.items():
                 defines.append((define, value))
+        for define, value in self._global_defines.items():
+            defines.append((define, value))
         if self._supports_line_directives:
             defines.append(("_GL_SUPPORTS_LINE_DIRECTIVES", "1"))
 
@@ -237,7 +262,7 @@ class SSVShaderPreprocessor:
         template_argparse = self._make_argparse(template_metadata)
         # Parse the template_info
         parsed_args = template_argparse.parse_args(template_info.args)
-        defines = self._make_defines(parsed_args, template_argparse, shader_defines, compiler_extensions)
+        defines = self._make_defines(parsed_args, template_metadata.get("arg", []), shader_defines, compiler_extensions)
 
         stages: List[str] = []
         for template_data in template_metadata.get("stage", []):
