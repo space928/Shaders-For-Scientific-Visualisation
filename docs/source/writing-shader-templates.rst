@@ -20,38 +20,36 @@ following shader source code is passed in the ``shader()`` method:
 
 .. code-block:: glsl
 
-    #pragma SSV pixel frag
-    // The entrypoint to the fragment shader
-    vec4 frag(vec2 fragPos)
+    #pragma SSV pixel mainImage
+    vec4 mainImage(in vec2 fragCoord)
     {
-        vec2 uv = fragPos.xy / uResolution.xy;
-
-        return mix(uv.xyx, uv.yyx, sin(uTime)*0.5+0.5);
+        vec2 uv = fragCoord/uResolution.xy;
+        vec3 col = sin(uv.xyx + iTime * vec3(3, 4, 5)) * 0.5 + 0.5;
+        return vec4(vec3(col), 1.0);
     }
 
 The shader preprocessor will search for the template: ``template_shadertoy.glsl`` this template is parsed to determine
 to parse further arguments in the ``#pragma SSV <template_name> ...`` directive. The template file is then preprocessed
 with the user's source code and template parameters injected in to the template.
 
-In this example the ``shadertoy`` shader template looks like this:
+In this example the ``pixel`` shader template looks like this:
 
 .. code-block:: glsl
 
-    #pragma SSVTemplate define shadertoy --author "Thomas Mathieson" \
-            --description "A simple full screen pixel shader with compatibility for Shadertoy shaders."
+    #pragma SSVTemplate define pixel --author "Thomas Mathieson" --description "A simple full screen pixel shader."
     #pragma SSVTemplate stage vertex
     #pragma SSVTemplate stage fragment
     // Arguments get converted into compiler defines by the preprocessor
     // an argument's name is transformed to match our naming convention:
     //    entrypoint -> T_ENTRYPOINT
     //    _varying_struct -> T_VARYING_STRUCT
-    #pragma SSVTemplate arg entrypoint --default mainImage -d "The name of the entrypoint function to the shader."
+    #pragma SSVTemplate arg entrypoint -d "The name of the entrypoint function to the shader."
+    #pragma SSVTemplate arg _z_value -d "The constant value to write into the depth buffer. 0 is close to the camera, 1 is far away." --default 0.999
     // Prefixing an argument name with an underscore is shorthand for --non_positional
     // #pragma SSVTemplate arg _varying_struct --type str
     // An example for an SDF shader
     // #pragma SSVTemplate arg _render_mode --choices solid xray isolines 2d
 
-    #define SHADERTOY_COMPAT
     // Include any default includes we think the user might want
     // compat.glsl automatically declares the #version and precision directives when needed, it should always be the
     // first file to be included in the template.
@@ -63,12 +61,12 @@ In this example the ``shadertoy`` shader template looks like this:
     // Use these preprocessor blocks to specify what code to compile for each shader stage.
     // These macros (SHADER_STAGE_<stage_name>) are defined automatically by the preprocessor.
     #ifdef SHADER_STAGE_VERTEX
-    in vec2 in_vert;
-    in vec3 in_color;
-    out vec3 color;
-    out vec2 position;
+    layout(location = 0) in vec2 in_vert;
+    layout(location = 1) in vec3 in_color;
+    layout(location = 0) out vec3 color;
+    layout(location = 1) out vec2 position;
     void main() {
-        gl_Position = vec4(in_vert, 0.0, 1.0);
+        gl_Position = vec4(in_vert, (T_Z_VALUE)*2.-1., 1.0);
         color = in_color;
         position = in_vert*0.5+0.5;
     }
@@ -77,17 +75,18 @@ In this example the ``shadertoy`` shader template looks like this:
 
     #ifdef SHADER_STAGE_FRAGMENT
     out vec4 fragColor;
-    in vec3 color;
-    in vec2 position;
+    layout(location = 0) in vec3 color;
+    layout(location = 1) in vec2 position;
 
     // Including the magic string "TEMPLATE_DATA" causes the user's shader code to be injected here.
     #include "TEMPLATE_DATA"
 
     void main() {
-        // Not using the color attribute causes the compiler to strip it and confuses modernGL.
         // T_ENTRYPOINT is a macro that was defined automatically when the argument defined
         // by '#pragma SSVTemplate arg entrypoint' was passed in.
-        fragColor = T_ENTRYPOINT(position * iResolution) + vec4(color, 1.0)*1e-6;
+        fragColor = T_ENTRYPOINT(position * uResolution.xy);
+        // Despite the explicit layout, sometimes in_color still gets stripped...
+        fragColor.a += color.r*1e-20;
     }
     #endif //SHADER_STAGE_FRAGMENT
 
@@ -188,7 +187,13 @@ directive.
 
 .. option:: --choices
 
-    Limits the valid values of this argument to those specified here. This parameter accepts multiple values.
+    Limits the valid values of this argument to those specified here. This parameter accepts multiple values. The
+    choices are defined as compiler macros allowing you to test for choices as follows::
+
+        #pragma SSVTemplate arg _camera_mode --choices INTERACTIVE AUTO
+
+        #if T_CAMERA_MODE == AUTO
+        ...
 
 .. option:: --const
 

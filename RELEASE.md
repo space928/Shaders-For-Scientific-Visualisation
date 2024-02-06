@@ -27,7 +27,7 @@ Make sure to clean up all the development files before building the package:
 jlpm clean:all
 ```
 
-You could also clean up the local git repository:
+You could also clean up the local git repository (optional):
 
 ```bash
 git clean -dfX
@@ -60,8 +60,14 @@ yarn install
 
 npm login
 npm publish --access public
+
+# (Workaround) Now reset the lockfile to the jlpm version and reinstall
+git restore yarn.lock
+jlpm install
 ```
 
+<!-- The following section is not currently applicable -->
+<!--
 ## Automated releases with the Jupyter Releaser
 
 The extension repository should already be compatible with the Jupyter Releaser.
@@ -115,3 +121,4 @@ Here is a summary of the steps to cut a new release:
 If the package is not on conda forge yet, check the documentation to learn how to add it: https://conda-forge.org/docs/maintainer/adding_pkgs.html
 
 Otherwise a bot should pick up the new version publish to PyPI, and open a new PR on the feedstock repository automatically.
+-->

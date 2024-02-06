@@ -1,5 +1,11 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
+/******************************************************************************
+* This file serves a compatibility layer allowing different GLSL compilers
+* to be used; it relies on special preprocessor pragma to work.
+* Including this, automatically defines the GLSL version, any needed
+* compiler extensions, and the default precision.
+******************************************************************************/
 #ifdef _GL_VERSION
 // This macro will expand to a version directive which is needed by the compiler, it must be the first non-whitespace/
 // comment token in the shader file!

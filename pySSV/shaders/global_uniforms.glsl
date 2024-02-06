@@ -1,5 +1,9 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
+#ifdef SPHINX_DOCS
+// Compatibility hack for the documentation compiler which doesn't know that 'uniform' is a keyword...
+#define uniform
+#endif // SPHINX_DOCS
 uniform float uTime;
 uniform int uFrame;
 uniform vec4 uResolution;

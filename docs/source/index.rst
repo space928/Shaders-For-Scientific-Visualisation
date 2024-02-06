@@ -6,19 +6,6 @@ Version: |release|
 
 Leverage the power of shaders for scientific visualisation in Jupyter
 
-
-Quickstart
-----------
-
-To get started with pySSV, install with pip::
-
-    pip install pySSV
-
-or with conda::
-
-    conda install pySSV
-
-
 Contents
 --------
 
@@ -26,9 +13,9 @@ Contents
    :maxdepth: 2
    :caption: Installation and Usage
 
-   installing
    introduction
    built-in-shader-templates
+   shader-library
    writing-shader-templates
 
 .. toctree::

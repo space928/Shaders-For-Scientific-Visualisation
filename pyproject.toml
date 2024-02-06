@@ -55,6 +55,7 @@ docs = [
     "recommonmark",
     "sphinx>=1.5",
     "sphinx_rtd_theme",
+    "sphinx-c-autodoc"
 ]
 examples = []
 test = [

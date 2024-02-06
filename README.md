@@ -15,6 +15,12 @@ Individual Project at the University of Glasgow for my Computing Science degree.
 The dissertation and accompanying notes and planning documents can be found
 [here](https://github.com/space928/Shaders-For-Scientific-Visualisation-Notes).
 
+## Gallery
+
+[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/8135a39e-68c4-4a05-b851-a5fd01ff61db)](https://pyssv.readthedocs.io/en/latest/examples/introduction.html#Mouse-input)|[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/a6f314f4-d364-4e77-8f46-d64a4acb175d)](https://pyssv.readthedocs.io/en/latest/examples/introduction.html#Shader-Templates)|[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/bc7b0fac-b832-4b71-a04b-7e7dc5a3a660)](https://pyssv.readthedocs.io/en/latest/examples/gui_examples.html)
+|:-------------------------:|:-------------------------:|:-------------------------:|
+[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/0b045ff9-889e-4588-984d-62f65d95e897)](https://pyssv.readthedocs.io/en/latest/examples/additional_examples.html#Geometry-shaders)|[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/439fb86b-2d81-4a75-9c93-2ec5ccfe57fd)](https://pyssv.readthedocs.io/en/latest/examples/additional_examples.html#Heightmap-Demo)|
+
 ## Installation
 
 You can install using `pip`:
@@ -23,14 +29,7 @@ You can install using `pip`:
 pip install pySSV
 ```
 
-If you are using Jupyter Notebook 5.2 or earlier, you may also need to enable
-the nbextension:
-
-```bash
-jupyter nbextension enable --py [--sys-prefix|--user|--system] pySSV
-```
-
-## Getting Started
+## Quick Start
 
 ### Try the example notebook
 
@@ -43,7 +42,8 @@ conda activate pySSV
 pip install pySSV
 ```
 
-Download the example notebook from github:
+Download the example notebook from github (other example notebooks available 
+[here](https://github.com/space928/Shaders-For-Scientific-Visualisation/tree/main/examples)):
 
 ```bash
 curl -o introduction.ipynb https://github.com/space928/Shaders-For-Scientific-Visualisation/raw/main/examples/introduction.ipynb
@@ -84,6 +84,7 @@ jupyter labextension develop --overwrite .
 jlpm run build
 ```
 
+<!-- No longer applicable in Jupyter Notebook 7
 For classic notebook, you need to run:
 
 ```bash
@@ -95,6 +96,7 @@ Note that the `--symlink` flag **doesn't work on Windows**, so you will here hav
 the `install` command every time that you rebuild your extension. For certain installations
 you might also need another flag instead of `--sys-prefix`, but we won't cover the meaning
 of those flags here.
+-->
 
 ### How to see your changes
 
