@@ -40,6 +40,8 @@ extensions = [
     'nbsphinx',
     'jupyter_sphinx',
     'nbsphinx_link',
+    'sphinx_c_autodoc',
+    'sphinx_c_autodoc.viewcode'
 ]
 
 # Set the nbsphinx JS path to empty to avoid showing twice of the widgets
@@ -49,6 +51,7 @@ nbsphinx_widgets_path = ""
 # Ensure our extension is available:
 import sys
 from os.path import dirname, join as pjoin
+import os
 
 docs = dirname(dirname(__file__))
 root = dirname(docs)
@@ -69,7 +72,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'pySSV'
-copyright = '2023, Thomas Mathieson'
+copyright = '2023-2024, Thomas Mathieson'
 author = 'Thomas Mathieson'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -123,6 +126,20 @@ autodoc_default_options = {
     # "exclude-members": "__weakref__"
 }
 autodoc_typehints = "both"
+
+# -- Options for C autodoc ------------------------------------------------
+if "win" in sys.platform:
+    from clang.cindex import Config
+    llvm_paths = [p for p in os.environ["path"].split(";") if "llvm" in p.lower()]
+    if len(llvm_paths) > 0:
+        Config.set_library_path(llvm_paths[0])
+    # Config.set_library_file('libclang.dll')
+if 'READTHEDOCS' in os.environ:
+    from clang.cindex import Config
+    Config.set_library_file("/usr/lib/llvm-14/lib/libclang.so.1")
+
+c_autodoc_roots = ["../../pySSV/shaders", ""]
+c_autodoc_compilation_args = ["-xc", "-DSPHINX_DOCS", "-include glsl_support.h"]
 
 # -- Options for HTML output ----------------------------------------------
 
@@ -238,4 +255,17 @@ def setup(app):
                 logger.warning('missing javascript file: %s' % fname)
             app.add_js_file(fname)
 
+    def pre_process(app, filename, contents, *args):
+        file_body: str = contents[0]
+
+        lines = file_body.splitlines()
+        if len(lines) > 1:
+            # If the first line is a copyright block, then skip the first two lines...
+            if "copyright (c)" in lines[0].lower():
+                lines = lines[2:]
+
+        # replace the list to return back to the sphinx extension
+        contents[:] = ["\n".join(lines)]
+
+    app.connect("c-autodoc-pre-process", pre_process)
     app.connect('builder-inited', add_scripts)

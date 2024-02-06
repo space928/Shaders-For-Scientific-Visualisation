@@ -99,7 +99,22 @@ Entrypoint Signature
 Template Arguments
 ^^^^^^^^^^^^^^^^^^
 
-*None*
+.. option:: entrypoint
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to pixel the shader.
+
+.. option:: --z_value
+
+    *default*: ``0.999``
+
+    *type*: ``float``
+
+    The constant value to write into the depth buffer. 0 is close to the camera, 1 is far away.
+
 
 Example
 ^^^^^^^
@@ -146,7 +161,13 @@ The shader is expected to take input from the following vertex attributes:
 Template Arguments
 ^^^^^^^^^^^^^^^^^^
 
-*None*
+.. option:: entrypoint
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to vertex the shader.
 
 Example
 ^^^^^^^
@@ -208,7 +229,100 @@ Example
 Vertex/Pixel Shader Template
 ----------------------------
 
-*Not yet implemented*
+``#pragma SSV vert_pixel``
+
+.. c:namespace:: vert_pixel
+
+This template exposes an entrypoint to a vertex shader and an entrypoint to a pixel shader.
+
+Entrypoint Signature
+^^^^^^^^^^^^^^^^^^^^
+
+Vertex Stage
+____________
+
+.. c:namespace:: vert_pixel_v
+
+.. c:function:: void mainVert()
+
+    :returns: a ``VertexOutput`` struct containing the transformed vertex data.
+
+The shader is expected to take input from the following vertex attributes:
+
+.. c:var:: vec4 in_vert
+.. c:var:: vec4 in_color
+
+The shader is expected to take write to the following vertex attributes:
+
+.. c:var:: vec3 color
+.. c:var:: vec4 gl_Position
+
+Pixel Stage
+___________
+
+.. c:namespace:: vert_pixel_p
+
+.. c:function:: vec4 mainPixel(vec3 position)
+
+    :param position: the position written to gl_Position by the vertex shader.
+    :returns: the final colour of the fragment.
+
+
+The shader is expected to take input from the following interpolated vertex attributes:
+
+.. c:var:: vec4 color
+
+
+Template Arguments
+^^^^^^^^^^^^^^^^^^
+
+.. option:: entrypoint_vert
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to vertex the shader.
+
+.. option:: entrypoint_pixel
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the entrypoint function to pixel the shader.
+
+
+Example
+^^^^^^^
+
+.. code-block:: glsl
+
+    #pragma SSV vert_pixel vert pixel
+
+    #ifdef SHADER_STAGE_VERTEX
+    // Additional vertex->fragment interpolators can be defined as follows
+    layout(location = 3) out vec2 uv;
+
+    void vert() {
+        uv = in_vert.xy;
+        gl_Position = vec4(in_vert.xyz, 1.);
+        gl_Position = uProjMat * uViewMat * gl_Position;
+    }
+    #endif // SHADER_STAGE_VERTEX
+
+    #ifdef SHADER_STAGE_FRAGMENT
+    // Make sure to also define any custom interpolators in the fragment stage
+    layout(location = 3) in vec2 uv;
+
+    vec4 pixel(vec3 pos) {
+        vec3 col = vec3(0.);
+        col.rg = uv;
+        col.b = pos.z;
+        return col;
+    }
+    #endif //SHADER_STAGE_FRAGMENT
+
 
 
 Signed Distance Field Template
@@ -230,6 +344,23 @@ Entrypoint Signature
 
 Template Arguments
 ^^^^^^^^^^^^^^^^^^
+
+.. option:: entrypoint
+
+    *positional*
+
+    *type*: ``str``
+
+    The name of the sdf function in the shader.
+
+.. option:: --camera_mode
+
+    *choices*: ``INTERACTIVE, AUTO``
+
+    *default*: ``AUTO``
+
+    How the camera should behave. ``INTERACTIVE``, uses the canvas' camera. ``AUTO``, automatically rotates around the scene
+    using the ``--camera_distance`` and ``--rotate_speed`` variables.
 
 .. option:: --camera_distance
 

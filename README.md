@@ -23,14 +23,7 @@ You can install using `pip`:
 pip install pySSV
 ```
 
-If you are using Jupyter Notebook 5.2 or earlier, you may also need to enable
-the nbextension:
-
-```bash
-jupyter nbextension enable --py [--sys-prefix|--user|--system] pySSV
-```
-
-## Getting Started
+## Quick Start
 
 ### Try the example notebook
 
@@ -43,7 +36,8 @@ conda activate pySSV
 pip install pySSV
 ```
 
-Download the example notebook from github:
+Download the example notebook from github (other example notebooks available 
+[here](https://github.com/space928/Shaders-For-Scientific-Visualisation/tree/main/examples)):
 
 ```bash
 curl -o introduction.ipynb https://github.com/space928/Shaders-For-Scientific-Visualisation/raw/main/examples/introduction.ipynb
@@ -84,6 +78,7 @@ jupyter labextension develop --overwrite .
 jlpm run build
 ```
 
+<!-- No longer applicable in Jupyter Notebook 7
 For classic notebook, you need to run:
 
 ```bash
@@ -95,6 +90,7 @@ Note that the `--symlink` flag **doesn't work on Windows**, so you will here hav
 the `install` command every time that you rebuild your extension. For certain installations
 you might also need another flag instead of `--sys-prefix`, but we won't cover the meaning
 of those flags here.
+-->
 
 ### How to see your changes
 
