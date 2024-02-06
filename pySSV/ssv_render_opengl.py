@@ -164,6 +164,7 @@ class SSVRenderOpenGL(SSVRender):
             if "MESA_D3D12_DEFAULT_ADAPTER_NAME" not in os.environ:
                 os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"] = "NVIDIA"
 
+        # TODO: Come up with a more legible way of creating the context... This is a mess...
         if ENVIRONMENT == Env.COLAB:
             # TODO: Test if any other platforms require specific backends
             # In Google Colab we need to explicitly specify the EGL backend, otherwise it tries (and fails) to use X11
@@ -178,7 +179,24 @@ class SSVRenderOpenGL(SSVRender):
                     self.ctx = moderngl.create_context(standalone=True, require=420)
                 except Exception:
                     # If unavailable, try any other version that might be available on the system
-                    self.ctx = moderngl.create_context(standalone=True)
+                    try:
+                        self.ctx = moderngl.create_context(standalone=True)
+                    except Exception as ex:
+                        if "linux" in sys.platform:
+                            # Try using EGL...
+                            # noinspection PyBroadException
+                            try:
+                                # Try to load OpenGL 4.2 by default
+                                self.ctx = moderngl.create_context(standalone=True, require=420,
+                                                                   backend="egl")  # type: ignore
+                            except Exception:
+                                # If unavailable, try any other version that might be available on the system
+                                try:
+                                    self.ctx = moderngl.create_context(standalone=True, backend="egl")  # type: ignore
+                                except Exception as ex_egl:
+                                    raise Exception(f"Couldn't create context using X11 or EGL: \n{ex}\n{ex_egl}")
+                        else:
+                            raise ex
             else:
                 self.ctx = moderngl.create_context(standalone=True, require=gl_version)
 
@@ -601,3 +619,6 @@ class SSVRenderOpenGL(SSVRender):
             else:
                 self._renderdoc_api.show_replay_ui()
             self._renderdoc_is_capturing = True
+
+    def set_start_time(self, start_time: float):
+        self._start_time = start_time

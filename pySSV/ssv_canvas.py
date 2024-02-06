@@ -152,6 +152,9 @@ class SSVCanvas:
         # Cache the last parameters to the run() method for the widget's "play" button to use
         self._last_run_settings: Dict[str, Any] = {}
         self._paused = False
+        self._pause_time = 0.0
+        self._frame_no = 0
+        self._start_time = time.time()
 
         # Set up a default render buffer
         self._main_render_buffer = SSVRenderBuffer(self, self._render_process_client, self._preprocessor,
@@ -188,6 +191,7 @@ class SSVCanvas:
             time.sleep(0.5)
 
     def __on_render(self, stream_data: Union[bytes, str]):
+        self._frame_no += 1
         if self._streaming_mode == SSVStreamingMode.MJPEG and self._canvas_stream_server is not None:
             # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
             self._canvas_stream_server.send(stream_data)  # type: ignore
@@ -221,14 +225,10 @@ class SSVCanvas:
             self._canvas_stream_server.heartbeat()
 
     def __on_play(self):
-        # self.run(**self._last_run_settings)
-        self._paused = False
-        if "stream_quality" in self._last_run_settings:
-            self._render_process_client.render(self._target_framerate, self._streaming_mode.value,
-                                               self._last_run_settings["stream_quality"])
+        self.un_pause()
 
     def __on_stop(self):
-        self.stop()
+        self.pause()
 
     def __on_click(self, down: bool, button: int):
         if self._paused:
@@ -337,6 +337,25 @@ class SSVCanvas:
         """Gets this canvas' preprocessor instance. Useful if you need to manually add compiler defines/macros."""
         return self._preprocessor
 
+    @property
+    def frame_number(self):
+        """Gets the number of frames that have been rendered since this canvas was run."""
+        return self._frame_no
+
+    @property
+    def canvas_time(self) -> float:
+        """
+        Gets or sets the current canvas time (this is the value used by the shader's ``uTime`` uniform). Note that
+        due to renderer latency there will be some offset to time value get/set here.
+        """
+        return time.time() - self._start_time
+
+    @canvas_time.setter
+    def canvas_time(self, value: float):
+        self._start_time = time.time() - value
+        if self._render_process_client.is_alive:
+            self._render_process_client.set_start_time(self._start_time)
+
     def _set_logging_stream(self):
         """
         Sets the logger output to this SSVCanvas' widget if it exists.
@@ -444,6 +463,7 @@ class SSVCanvas:
                                                    self._main_camera.projection_matrix)
 
         self._render_process_client.set_timeout(None if never_kill else self._render_timeout)
+        self.canvas_time = 0
         self._render_process_client.render(self._target_framerate, self._streaming_mode.value, stream_quality)
 
     def stop(self, force=False) -> None:
@@ -454,10 +474,29 @@ class SSVCanvas:
                       been force stopped.
         """
         self._paused = True
+        self._pause_time = 0.0
         if force:
             self._render_process_client.stop()
         else:
             self._render_process_client.render(0, self._streaming_mode.value)
+
+    def pause(self) -> None:
+        """
+        Pauses the current canvas, preventing new frames from being rendered and freezing time.
+        """
+        self._pause_time = self.canvas_time
+        self.stop(force=False)
+
+    def unpause(self) -> None:
+        """
+        Unpauses the current canvas, and resumes playback at the time the canvas was paused at.
+        """
+        if self._paused and self._render_process_client.is_alive:
+            self._paused = False
+            if "stream_quality" in self._last_run_settings:
+                self.canvas_time = self._pause_time
+                self._render_process_client.render(self._target_framerate, self._streaming_mode.value,
+                                                   self._last_run_settings["stream_quality"])
 
     def shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
                additional_templates: Optional[List[str]] = None,

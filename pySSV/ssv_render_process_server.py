@@ -365,6 +365,9 @@ class SSVRenderProcessServer:
         elif command == "RdCp":
             # Renderdoc Capture frame
             self._renderer.renderdoc_capture_frame(*command_args)
+        elif command == "StTm":
+            # Set start Time
+            self._renderer.set_start_time(*command_args)
         elif command == "LogC":
             # Log Context Info
             self._renderer.log_context_info(command_args[0])

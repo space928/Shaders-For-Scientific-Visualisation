@@ -18,6 +18,7 @@ from . import ssv_logging
 from .ssv_future import Future
 from .ssv_logging import log
 from .ssv_render_process_server import SSVRenderProcessServer
+from .environment import ENVIRONMENT, Env
 
 
 OnRenderObserverDelegate: TypeAlias = Callable[[bytes], None]
@@ -52,10 +53,11 @@ class SSVRenderProcessClient:
         self._on_log_observers: List[OnLogObserverDelegate] = []
 
         # Set the multiprocessing start method
-        try:
-            set_start_method("spawn")
-        except RuntimeError:
-            pass
+        if ENVIRONMENT != Env.COLAB:
+            try:
+                set_start_method("spawn")
+            except RuntimeError:
+                pass
 
         # Construct the render process server in its own process, passing it the backend string and the command queues
         # (note that the rx and tx queues are flipped here, the rx queue of the server is the tx queue of the client)
@@ -339,6 +341,15 @@ class SSVRenderProcessClient:
         :param filename: optionally, the filename and path to save the capture with.
         """
         self._command_queue_tx.put(("RdCp", filename))
+
+    def set_start_time(self, start_time: float) -> None:
+        """
+        Sets the renderer's start time; this is used by the renderer to compute the canvas time which is injected into
+        shaders.
+
+        :param start_time: the start time of the renderer in seconds since the start of the epoch.
+        """
+        self._command_queue_tx.put(("StTm", start_time))
 
     def get_context_info(self, timeout: Optional[float] = None) -> Optional[Dict[str, str]]:
         """

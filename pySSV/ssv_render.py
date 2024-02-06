@@ -54,7 +54,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def read_frame_into(self, buffer: bytearray, components: int = 4, frame_buffer_uid: int = 0):
+    def read_frame_into(self, buffer: bytearray, components: int = 4, frame_buffer_uid: int = 0) -> None:
         """
         Gets the current contents of the frame buffer as a byte array.
 
@@ -65,7 +65,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def log_context_info(self, full=False):
+    def log_context_info(self, full=False) -> None:
         """
         Logs the OpenGL information to the console for debugging.
 
@@ -89,7 +89,7 @@ class SSVRender(ABC):
 
     @abstractmethod
     def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
-                            components: int = 4, dtype: str = "f1"):
+                            components: int = 4, dtype: str = "f1") -> None:
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
@@ -105,7 +105,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def delete_frame_buffer(self, frame_buffer_uid: int):
+    def delete_frame_buffer(self, frame_buffer_uid: int) -> None:
         """
         Destroys the given framebuffer. *Note* that framebuffer 0 can't be destroyed as it is the output framebuffer.
 
@@ -115,7 +115,7 @@ class SSVRender(ABC):
 
     @abstractmethod
     def update_uniform(self, frame_buffer_uid: Optional[int], draw_call_uid: Optional[int],
-                       uniform_name: str, value: Any):
+                       uniform_name: str, value: Any) -> None:
         """
         Updates the value of a named shader uniform.
 
@@ -131,7 +131,7 @@ class SSVRender(ABC):
     @abstractmethod
     def update_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int,
                              vertex_array: Optional[npt.NDArray], index_array: Optional[npt.NDArray],
-                             vertex_attributes: Optional[Tuple[str]]):
+                             vertex_attributes: Optional[Tuple[str]]) -> None:
         """
         Updates the data inside a vertex buffer.
 
@@ -145,7 +145,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def delete_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int):
+    def delete_vertex_buffer(self, frame_buffer_uid: int, draw_call_uid: int) -> None:
         """
         Deletes an existing vertex buffer.
 
@@ -159,7 +159,7 @@ class SSVRender(ABC):
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
                         geometry_shader: Optional[str], compute_shader: Optional[str],
-                        primitive_type: Optional[str] = None):
+                        primitive_type: Optional[str] = None) -> None:
         """
         Compiles and registers a shader to a given framebuffer.
 
@@ -180,7 +180,7 @@ class SSVRender(ABC):
     def update_texture(self, texture_uid: int, data: npt.NDArray, uniform_name: Optional[str],
                        override_dtype: Optional[str],
                        rect: Optional[Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]],
-                       treat_as_normalized_integer: bool):
+                       treat_as_normalized_integer: bool) -> None:
         """
         Creates or updates a texture from the NumPy array provided.
 
@@ -200,8 +200,7 @@ class SSVRender(ABC):
     @abstractmethod
     def update_texture_sampler(self, texture_uid: int, repeat_x: Optional[bool], repeat_y: Optional[bool],
                                linear_filtering: Optional[bool], linear_mipmap_filtering: Optional[bool],
-                               anisotropy: Optional[int],
-                               build_mip_maps: bool):
+                               anisotropy: Optional[int], build_mip_maps: bool) -> None:
         """
         Updates a texture's sampling settings. Parameters set to ``None`` are not updated.
 
@@ -218,7 +217,7 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def delete_texture(self, texture_uid: int):
+    def delete_texture(self, texture_uid: int) -> None:
         """
         Destroys the given texture object.
 
@@ -227,10 +226,20 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def renderdoc_capture_frame(self, filename: Optional[str]):
+    def renderdoc_capture_frame(self, filename: Optional[str]) -> None:
         """
         Triggers a frame capture with Renderdoc if it's initialised.
 
         :param filename: optionally, the filename and path to save the capture with.
+        """
+        ...
+
+    @abstractmethod
+    def set_start_time(self, start_time: float) -> None:
+        """
+        Sets the renderer's start time; this is used by the renderer to compute the canvas time which is injected into
+        shaders.
+
+        :param start_time: the start time of the renderer in seconds since the start of the epoch.
         """
         ...
