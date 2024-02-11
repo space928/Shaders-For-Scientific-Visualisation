@@ -18,6 +18,25 @@ class ShaderStage(Enum):
     COMPUTE = "compute"
 
 
+class SSVStreamingMode(Enum):
+    """
+    Represents an image/video streaming mode for pySSV. Note that some of these streaming formats may not be
+    supported on all platforms.
+    """
+    JPG = "jpg"
+    PNG = "png"
+
+    VP8 = "vp8"
+    VP9 = "vp9"
+    H264 = "h264"
+    HEVC = "hevc"
+    """Not supported"""
+    MPEG4 = "mpeg4"
+    """Not supported"""
+
+    MJPEG = "mjpeg"
+
+
 class SSVRender(ABC):
     """
     An abstract rendering backend for SSV
@@ -88,11 +107,14 @@ class SSVRender(ABC):
         ...
 
     @abstractmethod
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
-                            components: int = 4, dtype: str = "f1") -> None:
+    def update_frame_buffer(self, frame_buffer_uid: int, order: Optional[int], size: Optional[Tuple[int, int]],
+                            uniform_name: Optional[str], components: Optional[int] = 4,
+                            dtype: Optional[str] = "f1") -> None:
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
+
+        Setting a parameter to ``None`` preserves the current value for that frame buffer.
 
         :param frame_buffer_uid: the uid of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param order: the sorting order to render the frame buffers in, smaller values are rendered first.

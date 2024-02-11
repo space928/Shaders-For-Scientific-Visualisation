@@ -14,7 +14,7 @@ else:
 
 from .ssv_camera import SSVCameraController, SSVOrbitCameraController, SSVLookCameraController, MoveDir
 from .ssv_render_process_client import SSVRenderProcessClient
-from .ssv_render_process_server import SSVStreamingMode
+from .ssv_render import SSVStreamingMode
 from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
 from .ssv_logging import log, set_output_stream
@@ -112,6 +112,7 @@ class SSVCanvas:
             self._widget.on_key(self.__on_key)
             self._widget.on_click(self.__on_click)
             self._widget.on_mouse_wheel(self.__on_mouse_wheel)
+            self._widget.on_save_image(self.__on_save_image)
             if self._use_renderdoc:
                 self._widget.on_renderdoc_capture(self.__on_renderdoc_capture)
             self._update_frame_rate_task: Optional[Thread] = None
@@ -225,7 +226,7 @@ class SSVCanvas:
             self._canvas_stream_server.heartbeat()
 
     def __on_play(self):
-        self.un_pause()
+        self.unpause()
 
     def __on_stop(self):
         self.pause()
@@ -258,6 +259,19 @@ class SSVCanvas:
         # TODO: Shader uniform/texture for keyboard support
         self.__update_camera_pos(key, down)
         self._on_keyboard_event(key, down)
+
+    def __on_save_image(self, image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]],
+                        render_buffer: int, suppress_ui: bool):
+        if self._widget is None or not self._render_process_client.is_alive:
+            return
+
+        img = self.save_image(image_type, quality, size, render_buffer, suppress_ui)
+        file_name = f"pySSV-Render-Frame{self.frame_number:05d}"
+        if render_buffer != 0:
+            file_name += f"-RenderBuffer{render_buffer}"
+        file_name += f".{image_type.value}"
+
+        self._widget.download_file(file_name, img)
 
     def __on_renderdoc_capture(self):
         log("Capturing frame...", severity=logging.INFO)
@@ -597,6 +611,29 @@ class SSVCanvas:
         :return: the texture object or ``None`` if no texture was found with that name.
         """
         return self._textures.get(uniform_name, None)
+
+    def save_image(self, image_type: SSVStreamingMode = SSVStreamingMode.JPG, quality: float = 95,
+                   size: Optional[Tuple[int, int]] = None, render_buffer: int = 0, suppress_ui: bool = False) -> bytes:
+        """
+        Saves the current frame as an image.
+
+        :param image_type: the image compression algorithm to use.
+        :param quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                        (some stream modes support values larger than 100, others clamp it internally), where 100
+                        results in the highest quality. This value is scaled to give a bit rate target or
+                        quality factor for the chosen encoder.
+        :param size: optionally, the width and height of the saved image. If set to ``None`` uses the current
+                     resolution of the render buffer.
+        :param render_buffer: the uid of the render buffer to save.
+        :param suppress_ui: whether any active `SSVGUI` should be suppressed.
+        :return: the bytes representing the compressed image.
+        """
+        img = self._render_process_client.save_image(image_type, quality, size, render_buffer, suppress_ui)
+        img_bytes = img.wait_result()
+        # This should never happen in practice, but is needed to satisfy type constraints
+        if img_bytes is None:
+            img_bytes = b''
+        return img_bytes
 
     def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
                                   additional_templates=None) -> str:

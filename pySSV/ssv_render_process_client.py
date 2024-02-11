@@ -17,6 +17,7 @@ import numpy.typing as npt
 from . import ssv_logging
 from .ssv_future import Future
 from .ssv_logging import log
+from .ssv_render import SSVStreamingMode
 from .ssv_render_process_server import SSVRenderProcessServer
 from .environment import ENVIRONMENT, Env
 
@@ -104,14 +105,12 @@ class SSVRenderProcessClient:
                 log(f"Received unknown command from render process '{command}' with args: {command_args}!",
                     severity=logging.ERROR)
 
-    def __wait_async_query(self, command: str, *args, timeout: Optional[float] = None) -> Optional[Any]:
+    def __create_async_query(self, command: str, *args) -> Future[Any]:
         """
         Runs a command which returns an async result and waits for its result to be returned.
 
         :param command: the command to run.
         :param args: any additional args to pass to the command.
-        :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
-                        indefinitely.
         :return: the result of the async query command.
         """
         # While dictionaries are atomic in python, it's still a good idea to use a lock
@@ -122,7 +121,7 @@ class SSVRenderProcessClient:
             self._query_futures[query_id] = result
 
         self._command_queue_tx.put((command, query_id, *args))
-        return result.wait_result(timeout)
+        return result
 
     @property
     def is_alive(self):
@@ -160,11 +159,14 @@ class SSVRenderProcessClient:
         """
         self._on_log_observers.remove(observer)
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
-                            components: int = 4, dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: Optional[int], size: Optional[Tuple[int, int]],
+                            uniform_name: Optional[str], components: Optional[int] = 4,
+                            dtype: Optional[str] = "f1"):
         """
         Updates the resolution/format of the given frame buffer. Note that framebuffer 0 is always used for output.
         If the given framebuffer id does not exist, it is created.
+
+        Setting a parameter to ``None`` preserves the current value for that frame buffer.
 
         :param frame_buffer_uid: the uid of the framebuffer to update/create. Buffer 0 is the output framebuffer.
         :param order: the sorting order to render the frame buffers in, smaller values are rendered first.
@@ -358,7 +360,7 @@ class SSVRenderProcessClient:
         :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
                         indefinitely.
         """
-        return self.__wait_async_query("GtCt", timeout=timeout)
+        return self.__create_async_query("GtCt").wait_result(timeout)
 
     def get_frame_times(self, timeout: Optional[float] = None) -> Optional[Tuple[float, float, float, float]]:
         """
@@ -378,7 +380,7 @@ class SSVRenderProcessClient:
                         indefinitely.
         :return: (avg_frame_time, max_frame_time, avg_encode_time, max_encode_time)
         """
-        return self.__wait_async_query("GtFt", timeout=timeout)
+        return self.__create_async_query("GtFt").wait_result(timeout)
 
     def get_supported_extensions(self, timeout: Optional[float] = None) -> Optional[Set[str]]:
         """
@@ -387,7 +389,25 @@ class SSVRenderProcessClient:
         :param timeout: the maximum amount of time in seconds to wait for the result. Set to ``None`` to wait
                         indefinitely.
         """
-        return self.__wait_async_query("GtEx", timeout=timeout)
+        return self.__create_async_query("GtEx").wait_result(timeout)
+
+    def save_image(self, image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]],
+                   render_buffer: int, suppress_ui: bool) -> Future[bytes]:
+        """
+        Saves the current frame as an image.
+
+        :param image_type: the image compression algorithm to use.
+        :param quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                        (some stream modes support values larger than 100, others clamp it internally), where 100
+                        results in the highest quality. This value is scaled to give a bit rate target or
+                        quality factor for the chosen encoder.
+        :param size: optionally, the width and height of the saved image. If set to ``None`` uses the current
+                     resolution of the render buffer.
+        :param render_buffer: the uid of the render buffer to save.
+        :param suppress_ui: whether any active SSVGUIs should be suppressed.
+        :return: the bytes representing the compressed image.
+        """
+        return self.__create_async_query("SvIm", image_type, quality, size, render_buffer, suppress_ui)
 
     def dbg_log_context_info(self, full=False):
         """

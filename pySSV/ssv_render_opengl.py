@@ -236,8 +236,21 @@ class SSVRenderOpenGL(SSVRender):
     def get_supported_extensions(self) -> Set[str]:
         return self.ctx.extensions
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
-                            components: int = 4, dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: Optional[int], size: Optional[Tuple[int, int]],
+                            uniform_name: Optional[str], components: Optional[int] = 4, dtype: Optional[str] = "f1"):
+        if frame_buffer_uid not in self._render_buffers:
+            if order is None or size is None or uniform_name is None or components is None or dtype is None:
+                log("Attempted to update a non-existant frame buffer! When creating a new frame buffer, no "
+                    "arguments can be set to None.", severity=logging.ERROR)
+                return
+        else:
+            old_rb = self._render_buffers[frame_buffer_uid]
+            order = old_rb.order if order is None else order
+            size = old_rb.render_texture.size if size is None else size
+            uniform_name = old_rb.uniform_name if uniform_name is None else uniform_name
+            components = old_rb.render_texture.components if components is None else components
+            dtype = old_rb.render_texture.dtype if dtype is None else dtype
+
         # TODO: It might make sense to decouple the moderngl dtype from our dtype if this is meant to be used by an
         #  abstract class.
         resolution = (min(size[0], self.ctx.info["GL_MAX_VIEWPORT_DIMS"][0]),

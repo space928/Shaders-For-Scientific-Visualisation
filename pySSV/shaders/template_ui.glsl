@@ -16,6 +16,10 @@
 #include "global_uniforms.glsl"
 
 
+// This uniform allows the UI rendering to be suppressed when enabled
+uniform float _suppress_ui;
+
+
 #ifdef SHADER_STAGE_VERTEX
 layout(location = 0) in vec2 in_vert;
 layout(location = 1) in vec4 in_color;
@@ -49,6 +53,11 @@ void main() {
     #ifdef T_SUPPORT_ROUNDING
     v_size = in_size;
     #endif // T_SUPPORT_ROUNDING
+
+    if(_suppress_ui != 0) {
+        // Put all vertices outside of clip space to prevent them from being rasterised.
+        gl_Position = vec4(-2., 0., 0., 1.);
+    }
 }
 #endif // SHADER_STAGE_VERTEX
 

@@ -1,7 +1,6 @@
 #  Copyright (c) 2023-2024 Thomas Mathieson.
 #  Distributed under the terms of the MIT license.
 import base64
-import enum
 import io
 import logging
 import time
@@ -9,7 +8,7 @@ from io import BytesIO
 from multiprocessing import Queue, current_process
 from queue import Empty
 from threading import current_thread
-from typing import Optional, Dict, Set
+from typing import Optional, Dict, Set, Tuple
 
 import av  # type: ignore
 import numpy as np
@@ -18,27 +17,8 @@ from PIL import Image
 
 from . import ssv_logging
 from .ssv_logging import log, SSVLogStream
-from .ssv_render import SSVRender
+from .ssv_render import SSVRender, SSVStreamingMode
 from .ssv_render_opengl import SSVRenderOpenGL
-
-
-class SSVStreamingMode(enum.Enum):
-    """
-    Represents an image/video streaming mode for pySSV. Note that some of these streaming formats may not be
-    supported on all platforms.
-    """
-    JPG = "jpg"
-    PNG = "png"
-
-    VP8 = "vp8"
-    VP9 = "vp9"
-    H264 = "h264"
-    HEVC = "hevc"
-    """Not supported"""
-    MPEG4 = "mpeg4"
-    """Not supported"""
-
-    MJPEG = "mjpeg"
 
 
 class SSVRenderProcessLogger(SSVLogStream):
@@ -389,6 +369,9 @@ class SSVRenderProcessServer:
             # Get supported Extensions
             ext = self._renderer.get_supported_extensions()
             self.__send_async_result(command_args[0], ext)
+        elif command == "SvIm":
+            # Save Image
+            self.__send_async_result(command_args[0], self.__save_image(*command_args[1:]))
         elif command == "DbRT":
             # Debug Render Test
             pass
@@ -426,14 +409,14 @@ class SSVRenderProcessServer:
             else:
                 self._frame_buffer_bytes = bytearray(self._renderer.read_frame())
             render_time = time.perf_counter()
-            stream_data = self.__to_png(self._frame_buffer_bytes)
+            stream_data = self.__to_png(self._frame_buffer_bytes, self.output_size, self.encode_quality)
         elif self.stream_mode == SSVStreamingMode.JPG:
             if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 3:
                 self._renderer.read_frame_into(self._frame_buffer_bytes, 3)
             else:
                 self._frame_buffer_bytes = bytearray(self._renderer.read_frame(3))
             render_time = time.perf_counter()
-            stream_data = self.__to_jpg(self._frame_buffer_bytes)
+            stream_data = self.__to_jpg(self._frame_buffer_bytes, self.output_size, self.encode_quality)
         elif self.stream_mode in self._supported_video_formats:
             if len(self._frame_buffer_bytes) == self.output_size[0] * self.output_size[1] * 3:
                 self._renderer.read_frame_into(self._frame_buffer_bytes, 3)
@@ -451,37 +434,101 @@ class SSVRenderProcessServer:
         self.avg_delta_time_encode = self.avg_delta_time_encode * 0.9 + (encode_time - render_time) * 0.1
         self._command_queue_tx.put(("NFrm", stream_data))
 
-    def __to_png(self, frame: bytearray) -> bytes:
+    def __save_image(self, image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]],
+                     render_buffer: int, suppress_ui: bool) -> bytes:
+        """
+        Saves the current frame as an image.
+
+        :param image_type: the image compression algorithm to use.
+        :param quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                        (some stream modes support values larger than 100, others clamp it internally), where 100
+                        results in the highest quality. This value is scaled to give a bit rate target or
+                        quality factor for the chosen encoder.
+        :param size: optionally, the width and height of the saved image. If set to ``None`` uses the current
+                     resolution of the render buffer.
+        :param render_buffer: the uid of the render buffer to save.
+        :param suppress_ui: whether any active SSVGUIs should be suppressed.
+        :return: the bytes representing the compressed image.
+        """
+        if self._renderer is None:
+            return b''
+
+        render_size = size if size else self.output_size
+        if render_size != self.output_size:
+            self._renderer.update_frame_buffer(render_buffer, None, render_size, None, None, None)
+        if suppress_ui:
+            self._renderer.update_uniform(None, None, "_suppress_ui", True)
+
+        if render_size != self.output_size or suppress_ui:
+            if not self._renderer.render():
+                return b''
+
+        if image_type == SSVStreamingMode.PNG:
+            if len(self._frame_buffer_bytes) == render_size[0] * render_size[1] * 4:
+                self._renderer.read_frame_into(self._frame_buffer_bytes, 4, render_buffer)
+                frame = self._frame_buffer_bytes
+            else:
+                frame = bytearray(self._renderer.read_frame(4, render_buffer))
+            stream_data = self.__to_png(frame, render_size, quality, True)
+        elif image_type == SSVStreamingMode.JPG:
+            if len(self._frame_buffer_bytes) == render_size[0] * render_size[1] * 3:
+                self._renderer.read_frame_into(self._frame_buffer_bytes, 3, render_buffer)
+                frame = self._frame_buffer_bytes
+            else:
+                frame = bytearray(self._renderer.read_frame(3, render_buffer))
+            stream_data = self.__to_jpg(frame, render_size, quality, True)
+        else:
+            log(f"Can't save image in format '{image_type}'!", severity=logging.ERROR)
+            stream_data = b''
+
+        if render_size != self.output_size:
+            self._renderer.update_frame_buffer(render_buffer, None, self.output_size, None, None, None)
+        if suppress_ui:
+            self._renderer.update_uniform(None, None, "_suppress_ui", False)
+
+        return stream_data
+
+    def __to_png(self, frame: bytearray, output_size: Tuple[int, int], encode_quality: float,
+                 flip_y: bool = False) -> bytes:
         """
         Converts a framebuffer into a base64 encoded png data url.
 
         :param frame: the frame as an RGBA8888 buffer of bytes.
+        :param output_size: the resolution of the frame.
+        :param encode_quality: the encoding quality (0-100).
+        :param flip_y: whether the frame should be flipped vertically.
         :return: a data url string containing the frame.
         """
-        image = Image.frombytes('RGBA', self.output_size, frame)
-        # image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        image = Image.frombytes('RGBA', output_size, frame)
+        if flip_y:
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
         image_bytes = BytesIO()
         quality = 5
-        if self.encode_quality is not None:
+        if encode_quality is not None:
             quality = min(max(round(
-                self.encode_quality / 100 * self._streaming_format_quality_scaling[self.stream_mode]), 0), 7)
+                encode_quality / 100 * self._streaming_format_quality_scaling[SSVStreamingMode.PNG]), 0), 7)
         image.save(image_bytes, format='png', optimize=False, compress_level=quality)
         return b"data:image/png;base64," + base64.b64encode(image_bytes.getvalue())
 
-    def __to_jpg(self, frame: bytearray) -> bytes:
+    def __to_jpg(self, frame: bytearray, output_size: Tuple[int, int], encode_quality: float,
+                 flip_y: bool = False) -> bytes:
         """
         Converts a framebuffer into a base64 encoded jpeg data url.
 
         :param frame: the frame as an RGB888 buffer of bytes.
+        :param output_size: the resolution of the frame.
+        :param encode_quality: the encoding quality (0-100).
+        :param flip_y: whether the frame should be flipped vertically.
         :return: a data url string containing the frame.
         """
-        image = Image.frombytes('RGB', self.output_size, frame)
-        # image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        image = Image.frombytes('RGB', output_size, frame)
+        if flip_y:
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
         image_bytes = BytesIO()
         quality = 75
-        if self.encode_quality is not None:
+        if encode_quality is not None:
             quality = min(max(round(
-                self.encode_quality / 100 * self._streaming_format_quality_scaling[self.stream_mode]), 0), 100)
+                encode_quality / 100 * self._streaming_format_quality_scaling[SSVStreamingMode.JPG]), 0), 100)
         image.save(image_bytes, format='jpeg', quality=quality)
         return b"data:image/jpg;base64," + base64.b64encode(image_bytes.getvalue())
 

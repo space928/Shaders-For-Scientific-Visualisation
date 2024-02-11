@@ -5,8 +5,9 @@
 #  Distributed under the terms of the MIT license.
 
 from ipywidgets import DOMWidget, CallbackDispatcher  # type: ignore
+import logging
 from io import TextIOBase
-from typing import Callable
+from typing import Callable, Optional, Tuple
 import sys
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
@@ -14,13 +15,29 @@ else:
     from typing_extensions import TypeAlias
 from traitlets import Unicode, Enum, Int, Bool, Float, Bytes  # type: ignore
 from ._frontend import module_name, module_version
-from .ssv_render_process_server import SSVStreamingMode
+from .ssv_render import SSVStreamingMode
+from .ssv_logging import log
 
 
 OnMessageDelegate: TypeAlias = Callable[[], None]
 OnClickDelegate: TypeAlias = Callable[[bool, int], None]
 OnKeyDelegate: TypeAlias = Callable[[str, bool], None]
 OnWheelDelegate: TypeAlias = Callable[[float], None]
+OnSaveImageDelegate: TypeAlias = Callable[[SSVStreamingMode, float, Optional[Tuple[int, int]], int, bool], None]
+"""
+A callable with parameters matching the signature::
+
+    on_save_image(image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]], render_buffer: int):
+        ...
+        
+| image_type: the image codec to save the image with.
+| quality: a value between 0-100, indicating the image quality (larger values are higher quality). For ``png`` this 
+           represents compression quality (higher values result in smaller files, but take longer to compress).
+| size: the resolution of the saved image. When set to ``None``, uses the current resolution of the render buffer (this 
+        also prevents an additional frame from being rendered).
+| render_buffer: the uid of the render buffer to save.
+| suppress_ui: whether any active SSVGUIs should be supressed.
+"""
 
 
 class SSVRenderWidget(DOMWidget):
@@ -58,6 +75,7 @@ class SSVRenderWidget(DOMWidget):
         self._click_handlers = CallbackDispatcher()
         self._key_handlers = CallbackDispatcher()
         self._wheel_handlers = CallbackDispatcher()
+        self._img_save_handlers = CallbackDispatcher()
         self._renderdoc_capture_handlers = CallbackDispatcher()
         self.on_msg(self._handle_widget_msg)
         self._view_count = 0
@@ -81,6 +99,17 @@ class SSVRenderWidget(DOMWidget):
             self._wheel_handlers(content["wheel"])
         elif "renderdoc_capture" in content:
             self._renderdoc_capture_handlers()
+        elif "save_image" in content:
+            settings = content["save_image"]
+            stream_mode = settings["image_type"]
+            try:
+                stream_mode = SSVStreamingMode(stream_mode)
+            except ValueError:
+                raise KeyError(f"'{stream_mode}' is not a valid streaming mode. Supported streaming modes are: "
+                               f"{[e.value for e in SSVStreamingMode]}")
+            size = None if settings["size"] is None else (settings["size"]["width"], settings["size"]["height"])
+            self._img_save_handlers(stream_mode, settings["quality"], size, settings["render_buffer"],
+                                    settings["suppress_ui"])
 
     def on_heartbeat(self, callback: OnMessageDelegate, remove=False):
         """
@@ -136,6 +165,15 @@ class SSVRenderWidget(DOMWidget):
         """
         self._wheel_handlers.register_callback(callback, remove=remove)
 
+    def on_save_image(self, callback: OnSaveImageDelegate, remove=False):
+        """
+        Register a callback to execute when the widget's 'save image' button is pressed.
+
+        :param callback: the function to be called when the event is raised.
+        :param remove: set to true to remove the callback from the list of callbacks.
+        """
+        self._img_save_handlers.register_callback(callback, remove=remove)
+
     def on_renderdoc_capture(self, callback: OnMessageDelegate, remove=False):
         """
         Register a callback to execute when the widget's renderdoc capture button is pressed.
@@ -144,6 +182,15 @@ class SSVRenderWidget(DOMWidget):
         :param remove: set to true to remove the callback from the list of callbacks.
         """
         self._renderdoc_capture_handlers.register_callback(callback, remove=remove)
+
+    def download_file(self, filename: str, data: bytes):
+        """
+        Triggers a file download in the client's web browser.
+
+        :param filename: the file name of the file to download.
+        :param data: the data to be downloaded.
+        """
+        self.send({"download_file": {"name": filename, "length": len(data)}}, buffers=[data])
 
 
 class SSVRenderWidgetLogIO(TextIOBase):
