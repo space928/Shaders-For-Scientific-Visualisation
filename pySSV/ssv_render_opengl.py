@@ -164,6 +164,7 @@ class SSVRenderOpenGL(SSVRender):
             if "MESA_D3D12_DEFAULT_ADAPTER_NAME" not in os.environ:
                 os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"] = "NVIDIA"
 
+        # TODO: Come up with a more legible way of creating the context... This is a mess...
         if ENVIRONMENT == Env.COLAB:
             # TODO: Test if any other platforms require specific backends
             # In Google Colab we need to explicitly specify the EGL backend, otherwise it tries (and fails) to use X11
@@ -178,7 +179,24 @@ class SSVRenderOpenGL(SSVRender):
                     self.ctx = moderngl.create_context(standalone=True, require=420)
                 except Exception:
                     # If unavailable, try any other version that might be available on the system
-                    self.ctx = moderngl.create_context(standalone=True)
+                    try:
+                        self.ctx = moderngl.create_context(standalone=True)
+                    except Exception as ex:
+                        if "linux" in sys.platform:
+                            # Try using EGL...
+                            # noinspection PyBroadException
+                            try:
+                                # Try to load OpenGL 4.2 by default
+                                self.ctx = moderngl.create_context(standalone=True, require=420,
+                                                                   backend="egl")  # type: ignore
+                            except Exception:
+                                # If unavailable, try any other version that might be available on the system
+                                try:
+                                    self.ctx = moderngl.create_context(standalone=True, backend="egl")  # type: ignore
+                                except Exception as ex_egl:
+                                    raise Exception(f"Couldn't create context using X11 or EGL: \n{ex}\n{ex_egl}")
+                        else:
+                            raise ex
             else:
                 self.ctx = moderngl.create_context(standalone=True, require=gl_version)
 
@@ -218,8 +236,21 @@ class SSVRenderOpenGL(SSVRender):
     def get_supported_extensions(self) -> Set[str]:
         return self.ctx.extensions
 
-    def update_frame_buffer(self, frame_buffer_uid: int, order: int, size: Tuple[int, int], uniform_name: str,
-                            components: int = 4, dtype: str = "f1"):
+    def update_frame_buffer(self, frame_buffer_uid: int, order: Optional[int], size: Optional[Tuple[int, int]],
+                            uniform_name: Optional[str], components: Optional[int] = 4, dtype: Optional[str] = "f1"):
+        if frame_buffer_uid not in self._render_buffers:
+            if order is None or size is None or uniform_name is None or components is None or dtype is None:
+                log("Attempted to update a non-existant frame buffer! When creating a new frame buffer, no "
+                    "arguments can be set to None.", severity=logging.ERROR)
+                return
+        else:
+            old_rb = self._render_buffers[frame_buffer_uid]
+            order = old_rb.order if order is None else order
+            size = old_rb.render_texture.size if size is None else size
+            uniform_name = old_rb.uniform_name if uniform_name is None else uniform_name
+            components = old_rb.render_texture.components if components is None else components
+            dtype = old_rb.render_texture.dtype if dtype is None else dtype
+
         # TODO: It might make sense to decouple the moderngl dtype from our dtype if this is meant to be used by an
         #  abstract class.
         resolution = (min(size[0], self.ctx.info["GL_MAX_VIEWPORT_DIMS"][0]),
@@ -601,3 +632,6 @@ class SSVRenderOpenGL(SSVRender):
             else:
                 self._renderdoc_api.show_replay_ui()
             self._renderdoc_is_capturing = True
+
+    def set_start_time(self, start_time: float):
+        self._start_time = start_time

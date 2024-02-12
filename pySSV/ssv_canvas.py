@@ -14,7 +14,7 @@ else:
 
 from .ssv_camera import SSVCameraController, SSVOrbitCameraController, SSVLookCameraController, MoveDir
 from .ssv_render_process_client import SSVRenderProcessClient
-from .ssv_render_process_server import SSVStreamingMode
+from .ssv_render import SSVStreamingMode
 from .ssv_render_widget import SSVRenderWidget, SSVRenderWidgetLogIO
 from .ssv_shader_preprocessor import SSVShaderPreprocessor
 from .ssv_logging import log, set_output_stream
@@ -112,6 +112,7 @@ class SSVCanvas:
             self._widget.on_key(self.__on_key)
             self._widget.on_click(self.__on_click)
             self._widget.on_mouse_wheel(self.__on_mouse_wheel)
+            self._widget.on_save_image(self.__on_save_image)
             if self._use_renderdoc:
                 self._widget.on_renderdoc_capture(self.__on_renderdoc_capture)
             self._update_frame_rate_task: Optional[Thread] = None
@@ -152,6 +153,9 @@ class SSVCanvas:
         # Cache the last parameters to the run() method for the widget's "play" button to use
         self._last_run_settings: Dict[str, Any] = {}
         self._paused = False
+        self._pause_time = 0.0
+        self._frame_no = 0
+        self._start_time = time.time()
 
         # Set up a default render buffer
         self._main_render_buffer = SSVRenderBuffer(self, self._render_process_client, self._preprocessor,
@@ -188,6 +192,7 @@ class SSVCanvas:
             time.sleep(0.5)
 
     def __on_render(self, stream_data: Union[bytes, str]):
+        self._frame_no += 1
         if self._streaming_mode == SSVStreamingMode.MJPEG and self._canvas_stream_server is not None:
             # log(f"Sending frame len={len(stream_data)}", severity=logging.INFO)
             self._canvas_stream_server.send(stream_data)  # type: ignore
@@ -221,14 +226,10 @@ class SSVCanvas:
             self._canvas_stream_server.heartbeat()
 
     def __on_play(self):
-        # self.run(**self._last_run_settings)
-        self._paused = False
-        if "stream_quality" in self._last_run_settings:
-            self._render_process_client.render(self._target_framerate, self._streaming_mode.value,
-                                               self._last_run_settings["stream_quality"])
+        self.unpause()
 
     def __on_stop(self):
-        self.stop()
+        self.pause()
 
     def __on_click(self, down: bool, button: int):
         if self._paused:
@@ -258,6 +259,19 @@ class SSVCanvas:
         # TODO: Shader uniform/texture for keyboard support
         self.__update_camera_pos(key, down)
         self._on_keyboard_event(key, down)
+
+    def __on_save_image(self, image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]],
+                        render_buffer: int, suppress_ui: bool):
+        if self._widget is None or not self._render_process_client.is_alive:
+            return
+
+        img = self.save_image(image_type, quality, size, render_buffer, suppress_ui)
+        file_name = f"pySSV-Render-Frame{self.frame_number:05d}"
+        if render_buffer != 0:
+            file_name += f"-RenderBuffer{render_buffer}"
+        file_name += f".{image_type.value}"
+
+        self._widget.download_file(file_name, img)
 
     def __on_renderdoc_capture(self):
         log("Capturing frame...", severity=logging.INFO)
@@ -336,6 +350,25 @@ class SSVCanvas:
     def preprocessor(self):
         """Gets this canvas' preprocessor instance. Useful if you need to manually add compiler defines/macros."""
         return self._preprocessor
+
+    @property
+    def frame_number(self):
+        """Gets the number of frames that have been rendered since this canvas was run."""
+        return self._frame_no
+
+    @property
+    def canvas_time(self) -> float:
+        """
+        Gets or sets the current canvas time (this is the value used by the shader's ``uTime`` uniform). Note that
+        due to renderer latency there will be some offset to time value get/set here.
+        """
+        return time.time() - self._start_time
+
+    @canvas_time.setter
+    def canvas_time(self, value: float):
+        self._start_time = time.time() - value
+        if self._render_process_client.is_alive:
+            self._render_process_client.set_start_time(self._start_time)
 
     def _set_logging_stream(self):
         """
@@ -444,6 +477,7 @@ class SSVCanvas:
                                                    self._main_camera.projection_matrix)
 
         self._render_process_client.set_timeout(None if never_kill else self._render_timeout)
+        self.canvas_time = 0
         self._render_process_client.render(self._target_framerate, self._streaming_mode.value, stream_quality)
 
     def stop(self, force=False) -> None:
@@ -454,10 +488,29 @@ class SSVCanvas:
                       been force stopped.
         """
         self._paused = True
+        self._pause_time = 0.0
         if force:
             self._render_process_client.stop()
         else:
             self._render_process_client.render(0, self._streaming_mode.value)
+
+    def pause(self) -> None:
+        """
+        Pauses the current canvas, preventing new frames from being rendered and freezing time.
+        """
+        self._pause_time = self.canvas_time
+        self.stop(force=False)
+
+    def unpause(self) -> None:
+        """
+        Unpauses the current canvas, and resumes playback at the time the canvas was paused at.
+        """
+        if self._paused and self._render_process_client.is_alive:
+            self._paused = False
+            if "stream_quality" in self._last_run_settings:
+                self.canvas_time = self._pause_time
+                self._render_process_client.render(self._target_framerate, self._streaming_mode.value,
+                                                   self._last_run_settings["stream_quality"])
 
     def shader(self, shader_source: str, additional_template_directory: Optional[str] = None,
                additional_templates: Optional[List[str]] = None,
@@ -558,6 +611,29 @@ class SSVCanvas:
         :return: the texture object or ``None`` if no texture was found with that name.
         """
         return self._textures.get(uniform_name, None)
+
+    def save_image(self, image_type: SSVStreamingMode = SSVStreamingMode.JPG, quality: float = 95,
+                   size: Optional[Tuple[int, int]] = None, render_buffer: int = 0, suppress_ui: bool = False) -> bytes:
+        """
+        Saves the current frame as an image.
+
+        :param image_type: the image compression algorithm to use.
+        :param quality: the encoding quality to use for the given encoding format. Takes a float between 0-100
+                        (some stream modes support values larger than 100, others clamp it internally), where 100
+                        results in the highest quality. This value is scaled to give a bit rate target or
+                        quality factor for the chosen encoder.
+        :param size: optionally, the width and height of the saved image. If set to ``None`` uses the current
+                     resolution of the render buffer.
+        :param render_buffer: the uid of the render buffer to save.
+        :param suppress_ui: whether any active `SSVGUI` should be suppressed.
+        :return: the bytes representing the compressed image.
+        """
+        img = self._render_process_client.save_image(image_type, quality, size, render_buffer, suppress_ui)
+        img_bytes = img.wait_result()
+        # This should never happen in practice, but is needed to satisfy type constraints
+        if img_bytes is None:
+            img_bytes = b''
+        return img_bytes
 
     def dbg_query_shader_template(self, shader_template_name: str, additional_template_directory: Optional[str] = None,
                                   additional_templates=None) -> str:

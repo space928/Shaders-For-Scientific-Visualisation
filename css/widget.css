@@ -113,6 +113,65 @@
   background-color: var(--ssv-bg-color2);
 }
 
+.ssv-combi-button-left {
+  border-end-end-radius: 0 !important;
+  border-start-end-radius: 0 !important;
+  margin-right: 0 !important;
+}
+
+.ssv-combi-button-centre {
+  border-radius: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.ssv-combi-button-right {
+  border-start-start-radius: 0 !important;
+  border-end-start-radius: 0 !important;
+  margin-left: 0 !important;
+}
+
+[class^="ssv-input"] {
+  height: 1.5rem !important;
+  padding: 0 0.5rem;
+  margin-right: 2px;
+  font-family: sans-serif;
+}
+
+[class^="ssv-input"]:disabled {
+  opacity: 75%;
+}
+
+[class^="ssv-input"]:hover:enabled {
+  background-color: var(--ssv-bg-color4);
+}
+
+[class^="ssv-input"]:active:enabled {
+  background-color: var(--ssv-bg-color2);
+}
+
+.ssv-input-select {
+  color: var(--ssv-font-color1);
+  background-color: var(--ssv-bg-color3);
+  border: 1px solid #ffffff10;
+  border-radius: 3px;
+}
+
+.ssv-input-number {
+  color: var(--ssv-font-color1);
+  background-color: var(--ssv-bg-color3);
+  border: 1px solid #ffffff10;
+  border-radius: 3px;
+}
+
+.ssv-input-checkbox {
+
+}
+
+.ssv-input-slider {
+  padding: 0 !important;
+}
+
 .ssv-status-frame-stats table {
   display: contents;
 }
@@ -128,4 +187,46 @@
 
 .ssv-status-frame-stats td:nth-last-child(n+1) {
   padding-right: 16px;
+}
+
+.ssv-status-save-image {
+  display: flex;
+}
+
+.ssv-modal {
+  position: fixed;
+  z-index: 10;
+  border-radius: 3px;
+  background: var(--ssv-bg-color1);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 2px;
+  box-shadow: 0 6px 16px #0005;
+}
+
+.ssv-modal-title-bar {
+  background: var(--ssv-bg-color2);
+  border-radius: 3px 3px 0 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ssv-modal-item {
+  margin: 4px 8px;
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ssv-label {
+  margin-right: 5px;
+}
+
+.ssv-hidden {
+  display: none !important;
 }

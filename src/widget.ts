@@ -12,7 +12,7 @@ import {
 import {KernelMessage} from "@jupyterlab/services";
 
 import {MODULE_NAME, MODULE_VERSION} from "./version";
-import {RENDERDOC_LOGO_SVG} from "./renderdoc_logo";
+import {SSVStatusBarView} from "./widget_status_bar";
 
 // Import the CSS
 import "../css/widget.css";
@@ -30,6 +30,10 @@ enum StreamingMode {
 
 interface StreamDataEvent {
   (args: ArrayBuffer | ArrayBufferView): void;
+}
+
+interface DownloadFileEvent {
+  (filename: string, data: ArrayBuffer | ArrayBufferView): void;
 }
 
 export class SSVRenderModel extends DOMWidgetModel {
@@ -72,6 +76,7 @@ export class SSVRenderModel extends DOMWidgetModel {
   static view_module_version = MODULE_VERSION;
 
   private _on_stream_data: {event: StreamDataEvent, ctx: any} | null = null;
+  private _on_download_file: {event: DownloadFileEvent, ctx: any} | null = null;
 
   /**
    * Registers a callback to the on_stream_data event, called whenever new streamed frame data is available to the
@@ -83,6 +88,16 @@ export class SSVRenderModel extends DOMWidgetModel {
     this._on_stream_data = {event: callback, ctx: context};
   }
 
+  /**
+   * Registers a callback to the on_download_file event, called whenever the kernel wants to create a file download
+   * from a byte array.
+   * @param callback the callback to invoke when new data is available.
+   * @param context a value for `this`.
+   */
+  public on_download_file(callback: DownloadFileEvent, context: any) {
+    this._on_download_file = {event: callback, ctx: context};
+  }
+
   public _handle_comm_msg(msg: KernelMessage.ICommMsgMsg): Promise<void> {
     if (msg.content.data["method"] == "custom") {
       const content = msg.content.data["content"];
@@ -90,6 +105,16 @@ export class SSVRenderModel extends DOMWidgetModel {
         if ("stream_data" in content) {
           if (this._on_stream_data && msg.buffers && msg.buffers.length > 0)
             this._on_stream_data.event.call(this._on_stream_data.ctx, msg.buffers[0]);
+        } else if ("download_file" in content) {
+          let filename = "download";
+          if(content["download_file"] && typeof content["download_file"] === "object"
+             && "name" in content["download_file"]) {
+            const v = content["download_file"]["name"];
+            if (v && typeof v === "string")
+              filename = v;
+          }
+          if (this._on_download_file && msg.buffers && msg.buffers.length > 0)
+            this._on_download_file.event.call(this._on_download_file.ctx, filename, msg.buffers[0])
         }
       }
     }
@@ -99,12 +124,7 @@ export class SSVRenderModel extends DOMWidgetModel {
 
 export class SSVRenderView extends DOMWidgetView {
   private _stream_element: HTMLImageElement | HTMLCanvasElement | null = null;
-  private _status_frame_stats_element: HTMLButtonElement | null = null;
-  private _status_adv_frame_stats_element: HTMLTableCellElement [] = [];
-  private _show_advanced_status: boolean = false;
-  private _status_resolution_element: HTMLSpanElement | null = null;
-  private _log_button_element: HTMLButtonElement | null = null;
-  private _log_element: HTMLElement | null = null;
+  private _widget_status_bar: SSVStatusBarView | null = null;
   private _focussed: boolean = false;
   private _text_decoder: TextDecoder = new TextDecoder('utf-8');
   private _streaming_mode: StreamingMode = StreamingMode.JPG;
@@ -122,9 +142,56 @@ export class SSVRenderView extends DOMWidgetView {
     this.el.classList.add("ssv-colors");
     if(getComputedStyle(document.documentElement).getPropertyValue("--colab-primary-surface-color").length > 0)
       this.el.classList.add("ssv-colab-support");
-
     this.el.classList.add("ssv-render-widget");
 
+    this.render_canvas();
+
+    // Status bar
+    this._widget_status_bar = new SSVStatusBarView(this, this.el, this._stream_element);
+    this._widget_status_bar.render();
+
+    // Setup callbacks
+    // this.stream_data_changed();
+    if(this._use_websockets) {
+      this._websocket = new WebSocket(this.model.get("websocket_url"));
+      this._websocket.addEventListener("open", () => { });
+      this._websocket.addEventListener("message", (event) => {
+        const data: Blob = event.data;
+        data.arrayBuffer().then((d)=> {
+          this.stream_data_changed(d);
+        });
+      });
+    } else {
+      this.model.on("change:stream_data_ascii", () => { this.stream_data_changed(this.model.get("stream_data_ascii")); }, this);
+      this.model.on("change:stream_data_binary", () => { this.stream_data_changed(this.model.get("stream_data_binary")); }, this);
+      (this.model as SSVRenderModel).on_stream_data(this.stream_data_changed, this);
+    }
+
+    (this.model as SSVRenderModel).on_download_file(this.download_file, this);
+
+    if (this._stream_element) {
+      const slow_update = setInterval(() => {
+        try {
+          this.send({"heartbeat": 0});
+          this.slow_update();
+        } catch (e) {
+          this.model.set("status_connection", false);
+          clearInterval(slow_update);
+        }
+      }, 250);
+
+      //let mousePos = { x: 0, y: 0 };
+      this.register_events();
+    }
+  }
+
+  remove() {
+    super.remove();
+
+    this.unregister_events();
+  }
+
+  private render_canvas() {
     this._streaming_mode = StreamingMode[this.model.get("streaming_mode") as keyof typeof StreamingMode];
     this._use_websockets = this.model.get("use_websockets");
     switch (this._streaming_mode) {
@@ -148,14 +215,16 @@ export class SSVRenderView extends DOMWidgetView {
         this._canvas_ctx = this._stream_element.getContext("2d");
         this.el.appendChild(this._stream_element);
         // TODO: Polyfill for Firefox users...
-        this._video_decoder = new VideoDecoder({output: (frame: VideoFrame) => {
-            if(!this._stream_element)
+        this._video_decoder = new VideoDecoder({
+          output: (frame: VideoFrame) => {
+            if (!this._stream_element)
               return;
             this._canvas_ctx?.drawImage(frame, 0, 0);
             frame.close();
           }, error: (error: Error) => {
             console.error(error);
-          }});
+          }
+        });
         let codec_str: string;
         switch (this._streaming_mode) {
           case StreamingMode.VP8:
@@ -191,47 +260,6 @@ export class SSVRenderView extends DOMWidgetView {
     if (this._streaming_mode == StreamingMode.MJPEG && this._stream_element) {
       (this._stream_element as HTMLImageElement).src = this.model.get("websocket_url");
     }
-
-    // Status bar
-    this.create_status_bar();
-
-    // Setup callbacks
-    // this.stream_data_changed();
-    if(this._use_websockets) {
-      this._websocket = new WebSocket(this.model.get("websocket_url"));
-      this._websocket.addEventListener("open", (event) => { });
-      this._websocket.addEventListener("message", (event) => {
-        const data: Blob = event.data;
-        data.arrayBuffer().then((d)=> {
-          this.stream_data_changed(d);
-        });
-      });
-    } else {
-      this.model.on("change:stream_data_ascii", () => { this.stream_data_changed(this.model.get("stream_data_ascii")); }, this);
-      this.model.on("change:stream_data_binary", () => { this.stream_data_changed(this.model.get("stream_data_binary")); }, this);
-      (this.model as SSVRenderModel).on_stream_data(this.stream_data_changed, this);
-    }
-
-    if (this._stream_element) {
-      const slow_update = setInterval(() => {
-        try {
-          this.send({"heartbeat": 0});
-          this.slow_update();
-        } catch (e) {
-          this.model.set("status_connection", false);
-          clearInterval(slow_update);
-        }
-      }, 250);
-
-      //let mousePos = { x: 0, y: 0 };
-      this.register_events();
-    }
-  }
-
-  remove() {
-    super.remove();
-
-    this.unregister_events();
   }
 
   private register_events() {
@@ -277,13 +305,13 @@ export class SSVRenderView extends DOMWidgetView {
     );
     this._stream_element.addEventListener(
       "mouseover",
-      (event: Event) => {
+      () => {
         this._focussed = true;
       }
     );
     this._stream_element.addEventListener(
       "mouseleave",
-      (event: Event) => {
+      () => {
         this._focussed = false;
       }
     );
@@ -291,6 +319,15 @@ export class SSVRenderView extends DOMWidgetView {
     document.addEventListener("keydown", this.on_keydown, {capture: true});
     document.addEventListener("keyup", this.on_keyup, {capture: true});
     document.addEventListener("wheel", this.on_wheel, {passive: false});
+  }
+
+  private unregister_events() {
+    // It's probably a good idea to unregister any events on the document itself. The events on the element, should be
+    // destroyed with the element.
+    window.removeEventListener("keypress", this.on_keypress);
+    window.removeEventListener("keydown", this.on_keydown);
+    window.removeEventListener("keyup", this.on_keyup);
+    window.removeEventListener("wheel", this.on_wheel);
   }
 
   private on_keypress = (event: KeyboardEvent) => {
@@ -323,189 +360,27 @@ export class SSVRenderView extends DOMWidgetView {
     }
   }
 
-  private unregister_events() {
-    // It's probably a good idea to unregister any events on the document itself. The events on the element, should be
-    // destroyed with the element.
-    window.removeEventListener("keypress", this.on_keypress);
-    window.removeEventListener("keydown", this.on_keydown);
-    window.removeEventListener("keyup", this.on_keyup);
-    window.removeEventListener("wheel", this.on_wheel);
+  private download_file(filename: string, data: ArrayBuffer | ArrayBufferView) {
+    const a_element = document.createElement("a");
+    /*const blob = new Blob([data], {type: "text/plain"});
+    const b64 = URL.createObjectURL(blob);*/
+    // Our files happen to already be base64 encoded, so we can avoid the Blob and object URL creation
+    const b64 = this._text_decoder.decode(data);
+    a_element.download = filename;
+    a_element.href = b64;
+
+    a_element.addEventListener('click', () => {
+      setTimeout(() => {
+        URL.revokeObjectURL(b64);
+      }, 1000);
+    }, false);
+
+    a_element.click();
   }
 
-// Triggered ~250ms to update UI elements which don't need updating frequently
+  // Triggered ~250ms to update UI elements which don't need updating frequently
   private slow_update() {
-    if (this._status_frame_stats_element) {
-      if (this._show_advanced_status) {
-        const times_str: string = this.model.get("frame_times");
-        const times = times_str.split(";");
-        if (times.length >= 4) {
-          this._status_adv_frame_stats_element[0].innerText = times[0];
-          this._status_adv_frame_stats_element[1].innerText = times[1];
-          this._status_adv_frame_stats_element[2].innerText = times[2];
-          this._status_adv_frame_stats_element[3].innerText = times[3];
-        }
-      } else {
-        this._status_frame_stats_element.innerText = `${this.model.get("frame_rate").toFixed(2)} FPS`;
-      }
-    }
-    if (this._status_resolution_element) {
-      this._status_resolution_element.innerText = `${this._stream_element?.width ?? 0} x ${this._stream_element?.height ?? 0}`;
-    }
-  }
-
-  private create_status_bar() {
-    const status_bar_div = document.createElement("div");
-    status_bar_div.className = "ssv-status-bar";
-    this.el.appendChild(status_bar_div);
-
-    // Play + Stop buttons
-    const status_play_pause = document.createElement("span");
-    status_play_pause.className = "ssv-status-play-pause";
-    status_bar_div.appendChild(status_play_pause);
-    const play_button = document.createElement("button");
-    play_button.textContent = "⏵";
-    play_button.className = "ssv-button ssv-icon-button";
-    play_button.onclick = () => { this.send({"play": 0}) };
-    status_play_pause.appendChild(play_button);
-    const stop_button = document.createElement("button");
-    stop_button.textContent = "⏹︎";
-    stop_button.className = "ssv-button ssv-icon-button";
-    stop_button.onclick = () => { this.send({"stop": 0}) };
-    status_play_pause.appendChild(stop_button);
-
-    // Frame statistics (FPS counter)
-    const status_frame_stats = document.createElement("span");
-    status_frame_stats.className = "ssv-status-frame-stats";
-    status_bar_div.appendChild(status_frame_stats);
-    const frame_status_button = document.createElement("button");
-    this._status_frame_stats_element = frame_status_button;
-    frame_status_button.textContent = "? FPS";
-    frame_status_button.className = "ssv-button";
-    status_frame_stats.appendChild(frame_status_button);
-    frame_status_button.onclick = () => {
-      const show_advanced = !this._show_advanced_status;
-      if(this._status_frame_stats_element) {
-        if (!this._show_advanced_status) {
-          // Create the advanced frame stats table
-          const table = document.createElement("table");
-          const tbody = document.createElement("tbody");
-          table.appendChild(tbody);
-          table.className = "ssv-status-frame-stats";
-          const r1 = document.createElement("tr");
-          const r2 = document.createElement("tr");
-          tbody.append(r1, r2);
-          tbody.className = "ssv-status-frame-stats";
-          const c1 = document.createElement("td");
-          const c2 = document.createElement("td");
-          const c3 = document.createElement("td");
-          const c4 = document.createElement("td");
-          c1.className = "ssv-status-frame-stats";
-          c2.className = "ssv-status-frame-stats";
-          c3.className = "ssv-status-frame-stats";
-          c4.className = "ssv-status-frame-stats";
-          r1.append(c1, c2);
-          r2.append(c3, c4);
-          this._status_adv_frame_stats_element = [c1, c2, c3, c4];
-          this._status_frame_stats_element.innerText = "";
-          this._status_frame_stats_element.appendChild(table);
-        } else {
-          // Remove the advanced frame stats table
-          const table = this._status_frame_stats_element.firstChild;
-          if(table)
-            this._status_frame_stats_element.removeChild(table);
-        }
-      }
-      this._show_advanced_status = show_advanced;
-    };
-
-    // Canvas resolution
-    const status_resolution = document.createElement("span");
-    status_resolution.className = "ssv-status-resolution";
-    status_bar_div.appendChild(status_resolution);
-    this._status_resolution_element = status_resolution;
-
-    // Connection status
-    const status_connection = document.createElement("span");
-    status_connection.className = "ssv-status-connection";
-    status_connection.innerText = "⭮ Connecting";
-    status_bar_div.appendChild(status_connection);
-    this.model.on("change:status_connection", () => {
-      if(this.model.get("status_connection")) {
-        status_connection.innerText = "🗲 Connected";
-        status_connection.classList.toggle("ssv-status-disconnected", false);
-      } else {
-        status_connection.innerText = "✕ Disconnected";
-        status_connection.classList.toggle("ssv-status-disconnected", true);
-      }
-    }, this);
-
-    // Renderdoc capture button
-    const renderdoc_capture = document.createElement("span");
-    renderdoc_capture.className = "ssv-status-renderdoc";
-    status_bar_div.appendChild(renderdoc_capture);
-    const capture_button = document.createElement("button");
-    capture_button.innerHTML = RENDERDOC_LOGO_SVG;
-    capture_button.className = "ssv-button ssv-icon-button";
-    renderdoc_capture.appendChild(capture_button);
-    capture_button.style.visibility = this.model.get("enable_renderdoc") ? "visible" : "hidden";
-    capture_button.onclick = () => {
-      this.send({"renderdoc_capture": 0})
-    };
-    this.model.on("change:enable_renderdoc", () => {
-      capture_button.style.visibility = this.model.get("enable_renderdoc") ? "visible" : "hidden";
-    });
-
-    // View Logs button
-    const status_log = document.createElement("span");
-    status_log.className = "ssv-status-log";
-    status_bar_div.appendChild(status_log);
-    const log_button = document.createElement("button");
-    this._log_button_element = log_button;
-    log_button.textContent = "View Log";
-    log_button.className = "ssv-button";
-    status_log.appendChild(log_button);
-    log_button.onclick = () => {
-      if(this._log_element) {
-        const active = this._log_element.classList.toggle("ssv-log-active");
-        if(active)
-          log_button.textContent = "Hide Log";
-        else
-          log_button.textContent = "View Log";
-      }
-    };
-
-    // Log panel
-    const log_div = document.createElement("code");
-    log_div.className = "ssv-log";
-    this.el.appendChild(log_div);
-    this._log_element = log_div;
-    this.model.on("change:status_logs", () => {
-      if(this._log_element) {
-        let log_text: string = this.model.get("status_logs");
-        log_text = log_text.replace(/\r\n|\r|\n/g, '<br>');
-        log_text = log_text.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-        if (log_text.includes("[WARNING]")) {
-          log_text = "<span class='ssv-log-warn'>" + log_text + "</span>";
-          if (this._log_button_element)
-            this._log_button_element.textContent += " ⚠️";
-        } else if (log_text.includes("[ERROR]")) {
-          log_text = "<span class='ssv-log-error'>" + log_text + "</span>";
-          if (this._log_button_element)
-            this._log_button_element.textContent += " ⛔";
-        }
-
-        // Work out if we need to auto-scroll to the bottom of the log.
-        // If the scroll position is within 150 pixels of the bottom, then we keep auto-scrolling.
-        const auto_scroll = this._log_element.scrollHeight == this._log_element.clientHeight ||
-          (this._log_element.scrollHeight - this._log_element.scrollTop - this._log_element.clientHeight) <= 150;
-
-        // You would have to be pretty determined to use this as an XSS entrypoint
-        this._log_element.innerHTML = this._log_element.innerHTML + log_text;
-
-        if (auto_scroll)
-          this._log_element.scrollTo({top: this._log_element.scrollHeight, behavior: "instant"});
-      }
-    }, this);
+    this._widget_status_bar?.slow_update();
   }
 
   stream_data_changed(stream_data: ArrayBuffer | ArrayBufferView | string) {

@@ -15,6 +15,13 @@ Individual Project at the University of Glasgow for my Computing Science degree.
 The dissertation and accompanying notes and planning documents can be found
 [here](https://github.com/space928/Shaders-For-Scientific-Visualisation-Notes).
 
+> [!NOTE]  
+> **FEEDBACK WANTED**  
+> To evaluate the utility of this project for my dissertation, I would appreciate if you could spare some time to fill 
+> out this survey:
+> 
+> https://forms.gle/rX7uPxaxQ1xcNVQB8
+
 ## Gallery
 
 [![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/8135a39e-68c4-4a05-b851-a5fd01ff61db)](https://pyssv.readthedocs.io/en/latest/examples/introduction.html#Mouse-input)|[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/a6f314f4-d364-4e77-8f46-d64a4acb175d)](https://pyssv.readthedocs.io/en/latest/examples/introduction.html#Shader-Templates)|[![image](https://github.com/space928/Shaders-For-Scientific-Visualisation/assets/15130114/bc7b0fac-b832-4b71-a04b-7e7dc5a3a660)](https://pyssv.readthedocs.io/en/latest/examples/gui_examples.html)

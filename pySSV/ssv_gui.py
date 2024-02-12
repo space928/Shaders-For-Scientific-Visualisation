@@ -1269,7 +1269,10 @@ def create_gui(canvas: SSVCanvas) -> SSVGUI:
     #pragma SSV pixel mainImage --z_value 0.01
     vec4 mainImage(in vec2 fragCoord)
     {{
-        vec2 uv = fragCoord/uResolution.xy;
+        // Compute UVs which place the UI at it's original resolution in the top left of the screen.
+        // this is needed to prevent UI stretching if the main render buffer is resized.
+        vec2 ui_size = vec2({rb.size[0]}., {rb.size[1]}.);
+        vec2 uv = clamp((fragCoord - vec2(0., uResolution.y-ui_size.y))/ui_size, 0., 1.);
         vec4 col = texture({rb.render_buffer_name}, uv);
         col.rgb /= col.a;
         return col;
