@@ -1,6 +1,6 @@
 //  Copyright (c) 2023 Thomas Mathieson.
 //  Distributed under the terms of the MIT license.
-#pragma SSVTemplate define point_cloud --author "Thomas Mathieson" --description "Allows the use of a geometry shader to generate triangles from vertices (treated as points)."
+#pragma SSVTemplate define geometry --author "Thomas Mathieson" --description "Allows the use of a geometry shader to generate triangles from vertices (treated as points)."
 #pragma SSVTemplate stage vertex
 #pragma SSVTemplate stage geometry
 #pragma SSVTemplate stage fragment

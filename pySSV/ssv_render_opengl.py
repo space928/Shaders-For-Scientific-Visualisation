@@ -13,7 +13,7 @@ import numpy.typing as npt
 
 from .environment import ENVIRONMENT, Env
 from .ssv_logging import log
-from .ssv_render import SSVRender
+from .ssv_render import SSVRender, SSVBlendOperand, SSVBlendMode
 from .ssv_texture import determine_texture_shape
 
 # Optional support for pyRenderdocApp
@@ -42,13 +42,26 @@ PRIMITIVE_TYPES: Dict[str, int] = {
     "PATCHES": cast(int, moderngl.PATCHES)
 }
 
+BLENDING_OPERAND: Dict[SSVBlendOperand, int] = {
+    SSVBlendOperand.ZERO: cast(int, moderngl.ZERO),
+    SSVBlendOperand.ONE: cast(int, moderngl.ONE),
+    SSVBlendOperand.SRC_ALPHA: cast(int, moderngl.SRC_ALPHA),
+    SSVBlendOperand.SRC_COLOR: cast(int, moderngl.SRC_COLOR),
+    SSVBlendOperand.DST_ALPHA: cast(int, moderngl.DST_ALPHA),
+    SSVBlendOperand.DST_COLOR: cast(int, moderngl.DST_COLOR),
+    SSVBlendOperand.ONE_MINUS_SRC_ALPHA: cast(int, moderngl.ONE_MINUS_SRC_ALPHA),
+    SSVBlendOperand.ONE_MINUS_SRC_COLOR: cast(int, moderngl.ONE_MINUS_SRC_COLOR),
+    SSVBlendOperand.ONE_MINUS_DST_ALPHA: cast(int, moderngl.ONE_MINUS_DST_ALPHA),
+    SSVBlendOperand.ONE_MINUS_DST_COLOR: cast(int, moderngl.ONE_MINUS_DST_COLOR),
+}
+
 
 class SSVDrawCall:
     """
     Stores a reference to all the objects needed to represent a single draw call belonging to a render buffer.
     """
     __slots__ = ["order", "vertex_buffer", "index_buffer", "vertex_attributes", "gl_vertex_array", "shader_program",
-                 "primitive_type"]
+                 "primitive_type", "blend_mode"]
     order: int
     vertex_buffer: Optional[moderngl.Buffer]
     index_buffer: Optional[moderngl.Buffer]
@@ -56,6 +69,7 @@ class SSVDrawCall:
     gl_vertex_array: Optional[moderngl.VertexArray]
     shader_program: Optional[moderngl.Program]
     primitive_type: int
+    blend_mode: Tuple[int, int, int, int]
 
     def __init__(self):
         self.order = 0
@@ -65,6 +79,9 @@ class SSVDrawCall:
         self.gl_vertex_array = None
         self.shader_program = None
         self.primitive_type = int(moderngl.TRIANGLES)
+        # A bit of a weird blending function, but it plays 'nice' with the GUI...
+        self.blend_mode = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,  # type: ignore
+                           moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
 
     def release(self, needs_gc: bool, release_vb: bool = True):
         if needs_gc:
@@ -209,8 +226,8 @@ class SSVRenderOpenGL(SSVRender):
         self.ctx.depth_func = "<="
         self.ctx.enable(moderngl.BLEND)
         # A bit of a weird blending function, but it plays 'nice' with the GUI...
-        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,  # type: ignore
-                               moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
+        # self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA,  # type: ignore
+        #                        moderngl.ONE, moderngl.ONE_MINUS_SRC_ALPHA)
         self.ctx.blend_equation = moderngl.FUNC_ADD, moderngl.FUNC_ADD
 
     def log_context_info(self, full=False):
@@ -393,7 +410,7 @@ class SSVRenderOpenGL(SSVRender):
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
                         geometry_shader: Optional[str], compute_shader: Optional[str],
-                        primitive_type: Optional[str] = None):
+                        primitive_type: Optional[str] = None, blend_mode: Optional[SSVBlendMode] = None):
         if frame_buffer_uid not in self._render_buffers:
             log(f"Attempted to register a shader to a non-existant render buffer (id={frame_buffer_uid})!",
                 severity=logging.ERROR)
@@ -426,6 +443,9 @@ class SSVRenderOpenGL(SSVRender):
 
             draw_call.primitive_type = cast(int, moderngl.TRIANGLES if primitive_type is None
                                             else PRIMITIVE_TYPES[primitive_type])
+            if blend_mode is not None and len(blend_mode) == 4:
+                draw_call.blend_mode = (BLENDING_OPERAND[blend_mode[0]], BLENDING_OPERAND[blend_mode[1]],
+                                        BLENDING_OPERAND[blend_mode[2]], BLENDING_OPERAND[blend_mode[3]])
 
             # Creating a new shader program invalidates any previously bound vertex arrays, so we need to recreate it.
             # Annoyingly, to support the "default" case where the user doesn't call update_vertex_buffer() we need to
@@ -603,6 +623,7 @@ class SSVRenderOpenGL(SSVRender):
                 if dc.gl_vertex_array is not None:
                     # log(f"DRAW CALL: o={dc.order} v_attrs={dc.vertex_attributes}", severity=logging.INFO)
                     self._bind_textures(dc.shader_program)
+                    self.ctx.blend_func = dc.blend_mode
                     dc.gl_vertex_array.render(mode=dc.primitive_type)
 
         if self._renderdoc_is_capturing:

@@ -59,7 +59,7 @@ class SSVWidgetSaveImageSettingsPanel {
     this._settings_panel_element = document.createElement("div");
     this._settings_panel_element.classList.add("ssv-modal", "ssv-hidden");
     parent_element.appendChild(this._settings_panel_element);
-    this._settings_panel_element.style.translate = `0 2.4rem`;  // This is a lazy approach, but it works for now
+    this._settings_panel_element.style.translate = `0 -100%`;
     this._settings_panel_element.style.width = "20rem";
     // this._settings_panel_element.style.height = "20rem";
 

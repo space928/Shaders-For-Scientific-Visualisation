@@ -17,7 +17,7 @@ import numpy.typing as npt
 from . import ssv_logging
 from .ssv_future import Future
 from .ssv_logging import log
-from .ssv_render import SSVStreamingMode
+from .ssv_render import SSVStreamingMode, SSVBlendMode
 from .ssv_render_process_server import SSVRenderProcessServer
 from .environment import ENVIRONMENT, Env
 
@@ -317,7 +317,7 @@ class SSVRenderProcessClient:
                         vertex_shader: str, fragment_shader: Optional[str] = None,
                         tess_control_shader: Optional[str] = None, tess_evaluation_shader: Optional[str] = None,
                         geometry_shader: Optional[str] = None, compute_shader: Optional[str] = None,
-                        primitive_type: Optional[str] = None):
+                        primitive_type: Optional[str] = None, blend_mode: Optional[SSVBlendMode] = None):
         """
         Compiles and registers a shader to a given framebuffer.
 
@@ -331,10 +331,11 @@ class SSVRenderProcessClient:
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
         :param primitive_type: what type of input primitive to treat the vertex data as. One of ("TRIANGLES", "LINES",
                                "POINTS), defaults to "TRIANGLES" if ``None``.
+        :param blend_mode: the blending function to use when blending this draw call.
         """
         self._command_queue_tx.put(("RegS", frame_buffer_uid, draw_call_uid, vertex_shader, fragment_shader,
                                     tess_control_shader, tess_evaluation_shader, geometry_shader, compute_shader,
-                                    primitive_type))
+                                    primitive_type, blend_mode))
 
     def renderdoc_capture_frame(self, filename: Optional[str]):
         """

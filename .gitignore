@@ -134,3 +134,6 @@ package-lock.json
 # Coverage data
 # -------------
 **/coverage/
+
+
+/examples/*.jpg

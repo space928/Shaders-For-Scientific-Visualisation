@@ -15,6 +15,7 @@ else:
 from .ssv_logging import log
 from .ssv_pragma_parser import SSVShaderPragmaParser, SSVTemplatePragmaParser, SSVTemplatePragmaData
 from .ssv_shader_source_preprocessor import SSVShaderSourcePreprocessor
+from .ssv_render import SSVBlendOperand, SSVBlendMode
 
 
 class SSVShaderPreprocessor:
@@ -230,7 +231,7 @@ class SSVShaderPreprocessor:
                    additional_template_directory: Optional[str] = None,
                    additional_templates: Optional[List[str]] = None,
                    shader_defines: Optional[Dict[str, str]] = None,
-                   compiler_extensions: Optional[List[str]] = None) -> Dict[str, str]:
+                   compiler_extensions: Optional[List[str]] = None) -> Dict[str, Union[str, SSVBlendMode]]:
         """
         Preprocesses an SSV shader into multiple processed shaders for each pipeline.
 
@@ -270,7 +271,7 @@ class SSVShaderPreprocessor:
                 stages.extend(template_data.shader_stage)
 
         # Preprocess the template
-        compiled_shaders = {}
+        compiled_shaders: Dict[str, Union[str, SSVBlendMode]] = {}
         for stage in stages:
             preprocessor = SSVShaderSourcePreprocessor(source)
             defines_stage = defines + [(f"SHADER_STAGE_{stage.upper()}", "1")]
@@ -285,11 +286,27 @@ class SSVShaderPreprocessor:
             shader = io.StringIO()
             preprocessor.write(shader)
             compiled_shaders[f"{stage}_shader"] = shader.getvalue()
+
+        # Primitive type
         primitive_type = None
         for p in template_metadata.get("input_primitive", []):
             primitive_type = p.primitive_type
         if primitive_type is not None:
             compiled_shaders["primitive_type"] = primitive_type
+
+        # Blend mode
+        blend_mode: Optional[SSVBlendMode] = None
+        for p in template_metadata.get("blend_mode", []):
+            assert p.src_color is not None and p.dst_color is not None
+            assert p.src_alpha is not None and p.dst_alpha is not None
+            blend_mode = (SSVBlendOperand[p.src_color], SSVBlendOperand[p.dst_color],
+                          SSVBlendOperand[p.src_alpha], SSVBlendOperand[p.dst_alpha])
+        if template_info.blend_mode is not None:
+            # Prioritise the user defined blend mode if it exists
+            blend_mode = template_info.blend_mode
+        if blend_mode is not None:
+            compiled_shaders["blend_mode"] = blend_mode
+
         return compiled_shaders
 
     def dbg_query_shader_templates(self,

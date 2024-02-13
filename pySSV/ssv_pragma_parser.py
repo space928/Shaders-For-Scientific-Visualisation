@@ -8,6 +8,7 @@ import pcpp  # type: ignore
 
 from .ssv_logging import log
 from .ssv_shader_args_tokenizer import SSVShaderArgsTokenizer
+from .ssv_render import SSVBlendMode, SSVBlendOperand
 
 
 class SSVTemplatePragmaData(argparse.Namespace):
@@ -28,6 +29,11 @@ class SSVTemplatePragmaData(argparse.Namespace):
     # description: list[str] = None
     # input_primitive
     primitive_type: Optional[str] = None
+    # Blend mode
+    src_color: Optional[str] = None
+    dst_color: Optional[str] = None
+    src_alpha: Optional[str] = None
+    dst_alpha: Optional[str] = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -36,6 +42,7 @@ class SSVTemplatePragmaData(argparse.Namespace):
 class SSVShaderPragmaData(argparse.Namespace):
     template: str
     args: List[str] = []
+    blend_mode: Optional[SSVBlendMode] = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -99,6 +106,16 @@ class SSVTemplatePragmaParser(pcpp.Preprocessor):
                                                              "treated as.")
         input_primitive_parser.add_argument("primitive_type", choices=["POINTS", "LINES", "TRIANGLES"],
                                             default="TRIANGLES")
+        blend_mode_parser = sub_parsers.add_parser("blend_mode",
+                                                   help="Specifies the blending operation used by the renderer. The "
+                                                        "blending formula is as follows:\n"
+                                                        "\tcolor = src.rgb * blend_mode[0] + dst.rgb * blend_mode[1]\n"
+                                                        "\talpha = src.a * blend_mode[2] + dst.a * blend_mode[3]")
+        blend_ops = SSVBlendOperand.__members__.keys()
+        blend_mode_parser.add_argument("src_color", choices=blend_ops)
+        blend_mode_parser.add_argument("dst_color", choices=blend_ops)
+        blend_mode_parser.add_argument("src_alpha", choices=blend_ops)
+        blend_mode_parser.add_argument("dst_alpha", choices=blend_ops)
 
         self._pragma_args = []
 
@@ -187,6 +204,7 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
         self._pragma_parse.add_argument("args", type=str, nargs="*")
 
         self._pragma_args = None
+        self._blend_mode = None
 
     def on_directive_unknown(self, directive, toks, ifpassthru, precedingtoks):
         """
@@ -200,6 +218,20 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             if self._pragma_args is not None:
                 raise ValueError("Shader contains multiple shader template pragma directives! Only one is allowed.")
             self._pragma_args = SSVShaderArgsTokenizer.correct_tokens(toks[2:], self)
+        elif toks[0].value == "BLEND":
+            blend_mode = []
+            for tok in toks[1:]:
+                if tok.type not in self.t_WS:
+                    if tok.value not in SSVBlendOperand.__members__:
+                        raise ValueError(f"[{directive.source}:{directive.lineno}] Invalid blending operand "
+                                         f"'{tok.value}'!")
+
+                    blend_mode.append(SSVBlendOperand[tok.value])
+            if len(blend_mode) != 4:
+                raise ValueError(f"[{directive.source}:{directive.lineno}] Expected 4 blending operands (src_col, "
+                                 f"dst_col, src_alpha, dst_alpha) but only found {len(blend_mode)}!")
+            self._blend_mode = tuple(blend_mode)
+
         # else:
         #     log(f"[{directive.source}:{directive.lineno}] Unrecognised #pragma directive: {''.join([t.value for t in toks])}",
         #         severity=logging.DEBUG)
@@ -219,6 +251,7 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             ignore = {}
 
         self._pragma_args = None
+        self._blend_mode = None
 
         # Set up the parser
         super(SSVShaderPragmaParser, self).parse(input, source, ignore)
@@ -231,7 +264,9 @@ class SSVShaderPragmaParser(pcpp.Preprocessor):
             raise ValueError(
                 "Shader does not use a shader template! Did you remember to add #pragma SSV [...] to your shader?")
 
-        return self._pragma_parse.parse_args(self._pragma_args, namespace=SSVShaderPragmaData())
+        args = self._pragma_parse.parse_args(self._pragma_args, namespace=SSVShaderPragmaData())
+        args.blend_mode = self._blend_mode
+        return args
 
     def write(self, oh=sys.stdout):
         """

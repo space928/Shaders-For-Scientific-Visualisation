@@ -25,35 +25,38 @@ from .ssv_canvas_stream_server import SSVCanvasStreamServer
 from .environment import ENVIRONMENT, Env
 
 
-OnMouseDelegate: TypeAlias = Callable[[Tuple[bool, bool, bool], Tuple[int, int], float], None]
+OnMouseDelegate: TypeAlias = Callable[["SSVCanvas", Tuple[bool, bool, bool], Tuple[int, int], float], None]
 """
 A callable with parameters matching the signature::
 
-    on_mouse(mouse_down: tuple[bool, bool, bool], mouse_pos: tuple[int, int], mouse_wheel_delta: float) -> None:
+    on_mouse(canvas: SSVCanvas, mouse_down: tuple[bool, bool, bool], mouse_pos: tuple[int, int], mouse_wheel_delta: float) -> None:
         ...
         
+| canvas: the canvas that dispatched this event.
 | mouse_down: a tuple of booleans representing the mouse button state (left, right, middle).
 | mouse_pos: a tuple of ints representing the mouse position relative to the canvas in pixels.
 | mouse_wheel_delta: how many pixels the mousewheel has scrolled since the last callback.
 """
-OnKeyDelegate: TypeAlias = Callable[[str, bool], None]
+OnKeyDelegate: TypeAlias = Callable[["SSVCanvas", str, bool], None]
 """
 A callable with parameters matching the signature::
 
-    on_key(key: str, down: bool) -> None:
+    on_key(canvas: SSVCanvas, key: str, down: bool) -> None:
         ...
         
+| canvas: the canvas that dispatched this event.
 | key: the name of key in this event. Possible values can be found here: 
        https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values
 | down: whether the key is being pressed.
 """
-OnFrameRenderedDelegate: TypeAlias = Callable[[float], None]
+OnFrameRenderedDelegate: TypeAlias = Callable[["SSVCanvas", float], None]
 """
 A callable with parameters matching the signature::
 
-    on_key(delta_time: float) -> None:
+    on_key(canvas: SSVCanvas, delta_time: float) -> None:
         ...
 
+| canvas: the canvas that dispatched this event.
 | key: the time in seconds since the last frame was rendered.
 """
 
@@ -94,7 +97,7 @@ class SSVCanvas:
         self._on_mouse_event: SSVCallbackDispatcher[OnMouseDelegate] = SSVCallbackDispatcher()
         self._on_keyboard_event: SSVCallbackDispatcher[OnKeyDelegate] = SSVCallbackDispatcher()
         self._on_frame_rendered: SSVCallbackDispatcher[OnFrameRenderedDelegate] = SSVCallbackDispatcher()
-        self._on_start: SSVCallbackDispatcher[Callable[[], None]] = SSVCallbackDispatcher()
+        self._on_start: SSVCallbackDispatcher[Callable[["SSVCanvas"], None]] = SSVCallbackDispatcher()
         if use_renderdoc:
             try:
                 from pyRenderdocApp import RENDERDOC_API_1_6_0  # type: ignore
@@ -144,7 +147,7 @@ class SSVCanvas:
         self._preprocessor = SSVShaderPreprocessor(gl_version=shader_gl_version,
                                                    supports_line_directives=supports_line_directives)
 
-        self._supports_websockets = ENVIRONMENT != Env.COLAB or ENVIRONMENT != Env.JUPYTERLITE
+        self._supports_websockets = ENVIRONMENT != Env.COLAB and ENVIRONMENT != Env.JUPYTERLITE
         self._websocket_url: Optional[str] = None
         self._canvas_stream_server: Optional[SSVCanvasStreamServer] = None
 
@@ -217,7 +220,7 @@ class SSVCanvas:
             self._render_process_client.update_uniform(None, None, "uViewMat",
                                                        self._main_camera.view_matrix)
         # Invoke callbacks
-        self._on_frame_rendered(delta_time)
+        self._on_frame_rendered(self, delta_time)
 
     def __on_heartbeat(self):
         self._render_process_client.send_heartbeat()
@@ -241,7 +244,7 @@ class SSVCanvas:
         self._main_camera.mouse_change(self._mouse_pos, self._mouse_down)
         self._render_process_client.update_uniform(None, None, "uViewMat",
                                                    self._main_camera.view_matrix)
-        self._on_mouse_event(self._mouse_down, self._mouse_pos, 0)
+        self._on_mouse_event(self, self._mouse_down, self._mouse_pos, 0)
 
     def __update_camera_pos(self, key: str, down: bool):
         if key == "ArrowUp" or key == "w" or key == "W" or key == "z" or key == "Z":
@@ -258,7 +261,7 @@ class SSVCanvas:
             return
         # TODO: Shader uniform/texture for keyboard support
         self.__update_camera_pos(key, down)
-        self._on_keyboard_event(key, down)
+        self._on_keyboard_event(self, key, down)
 
     def __on_save_image(self, image_type: SSVStreamingMode, quality: float, size: Optional[Tuple[int, int]],
                         render_buffer: int, suppress_ui: bool):
@@ -377,7 +380,7 @@ class SSVCanvas:
         if self._widget is not None:
             set_output_stream(SSVRenderWidgetLogIO(self._widget))
 
-    def on_start(self, callback: Callable[[], None], remove: bool = False):
+    def on_start(self, callback: Callable[["SSVCanvas"], None], remove: bool = False):
         """
         Registers/unregisters a callback which is invoked when this canvas's ``run()`` method is called, before any
         frames are rendered.
@@ -447,7 +450,7 @@ class SSVCanvas:
             # raise ConnectionError("Render process is no longer connected. Create a new SSVCanvas and try again.")
 
         self._render_process_client.subscribe_on_render(self.__on_render)
-        self._on_start()
+        self._on_start(self)
 
         if self._widget is not None:
             from IPython.display import display
@@ -688,7 +691,7 @@ class SSVCanvas:
         shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
                                                 additional_templates, shader_defines, compiler_extensions)
         if not pretty_print:
-            return shaders
+            return {k: str(v) for k, v in shaders.items()}
 
         try:
             from ._version import __version__  # type: ignore

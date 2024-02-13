@@ -110,7 +110,7 @@ class SSVVertexBuffer:
         shaders = self._preprocessor.preprocess(shader_source, None, additional_template_directory,
                                                 additional_templates, shader_defines, compiler_extensions)
         self._render_process_client.register_shader(self._render_buffer.render_buffer_uid, self._draw_call_uid,
-                                                    **shaders)
+                                                    **shaders)  # type: ignore
 
     def update_uniform(self, uniform_name: str, value: Any, share_with_render_buffer: bool = False,
                        share_with_canvas: bool = False) -> None:

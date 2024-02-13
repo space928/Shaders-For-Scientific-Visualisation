@@ -293,9 +293,9 @@ class SSVGUI:
         self.canvas.preprocessor.global_defines["_USING_GUI"] = "1"
         self._set_logging_stream = False
         self._last_mouse_down = False
-        self.canvas.on_start(lambda: self._update_gui())
-        self.canvas.on_mouse_event(lambda x, y, z: self._update_gui(True))
-        self.canvas.on_keyboard_event(lambda x, y: self._update_gui())
+        self.canvas.on_start(lambda x: self._update_gui())
+        self.canvas.on_mouse_event(lambda x, y, z, w: self._update_gui(True))
+        self.canvas.on_keyboard_event(lambda x, y, z: self._update_gui())
 
     def _update_gui(self, should_set_logging_stream: bool = False):
         """

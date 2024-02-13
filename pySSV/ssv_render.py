@@ -3,6 +3,11 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, Any, Union, Tuple, Set, Dict
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 import numpy.typing as npt
 
@@ -35,6 +40,33 @@ class SSVStreamingMode(Enum):
     """Not supported"""
 
     MJPEG = "mjpeg"
+
+
+class SSVBlendOperand(Enum):
+    """
+    Represents an operand in the blending operation.
+    """
+    ZERO = 0
+    ONE = 1
+    SRC_COLOR = 2
+    ONE_MINUS_SRC_COLOR = 3
+    SRC_ALPHA = 4
+    ONE_MINUS_SRC_ALPHA = 5
+    DST_ALPHA = 6
+    ONE_MINUS_DST_ALPHA = 7
+    DST_COLOR = 8
+    ONE_MINUS_DST_COLOR = 9
+
+
+SSVBlendMode: TypeAlias = Tuple[SSVBlendOperand, SSVBlendOperand, SSVBlendOperand, SSVBlendOperand]
+"""
+The blending operation used by the renderer.
+
+The blending formula is as follows::
+
+   color = src.rgb * blend_mode[0] + dst.rgb * blend_mode[1]
+   alpha = src.a * blend_mode[2] + dst.a * blend_mode[3]
+"""
 
 
 class SSVRender(ABC):
@@ -181,7 +213,7 @@ class SSVRender(ABC):
                         vertex_shader: str, fragment_shader: Optional[str],
                         tess_control_shader: Optional[str], tess_evaluation_shader: Optional[str],
                         geometry_shader: Optional[str], compute_shader: Optional[str],
-                        primitive_type: Optional[str] = None) -> None:
+                        primitive_type: Optional[str] = None, blend_mode: Optional[SSVBlendMode] = None) -> None:
         """
         Compiles and registers a shader to a given framebuffer.
 
@@ -195,6 +227,7 @@ class SSVRender(ABC):
         :param compute_shader: *[Not implemented]* the preprocessed compute shader GLSL source.
         :param primitive_type: what type of input primitive to treat the vertex data as. One of ("TRIANGLES", "LINES",
                                "POINTS), defaults to "TRIANGLES" if ``None``.
+        :param blend_mode: the blending function to use when blending this draw call.
         """
         ...
 
